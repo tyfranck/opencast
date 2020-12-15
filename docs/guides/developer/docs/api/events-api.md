@@ -5,11 +5,11 @@
 
 Returns a list of events.
 
-The following query string parameters are supported to filter, sort and pagingate the returned list:
+The following query string parameters are supported to filter, sort and paginate the returned list:
 
 Query String Parameter |Type                         | Description
 :----------------------|:----------------------------|:-----------
-`filter`               | [`string`](types.md#basic)  | A comma-separated list of filters to limit the results with (see [Filtering](usage.md#filtering)). See the below table for the list of available filters
+`filter`               | [`string`](types.md#basic)  | A comma-separated list of filters to limit the results with (see [Filtering](usage.md#filtering)). See the below table for the list of available filters. Version 1.5.0 and newer support comma separated use of the `filter` keyword, creating a logical OR.
 `sort`                 | [`string`](types.md#basic)  | A comma-separated list of sort criteria (see [Sorting](usage.md#sorting)).  See the below table for the list of available sort criteria
 `limit`                | [`integer`](types.md#basic) | The maximum number of results to return (see [Pagination](usage.md#pagination))
 `offset`               | [`integer`](types.md#basic) | The index of the first result to return (see [Pagination](usage.md#pagination))
@@ -35,7 +35,7 @@ Filter Name       | Description
 `is_part_of`      | Events based upon which series they are a part of. Use the series identifier here (version 1.1.0 or higher)
 `source`          | Filter events whose source match this value (version 1.1.0 or higher)
 `agent_id`        | Filter events based on the capture agent id (version 1.1.0 or higher)
-`start`           | Filter events based on start date (version 1.1.0 or higer)
+`start`           | Filter events based on start date (version 1.1.0 or higher)
 `technical_start` | Filter events based on the technical start date (version 1.1.0 or higher)
 
 Note:
@@ -51,9 +51,9 @@ Sort Criteria       | Description
 `presenter`         | By the presenter of the event
 `start_date`        | By the start date of the event
 `end_date`          | By the end date of the event
-`review_status`     | By whether the event has been reviewed and approved or not
+`review_status`     | By whether the event has been reviewed and approved or not [DEPRECATED]
 `workflow_state`    | By the current processing state of the event. Is it scheduled to be recorded (INSTANTIATED), currently processing (RUNNING), paused waiting for a resource or user paused (PAUSED), cancelled (STOPPED), currently failing (FAILING), already failed (FAILED), or finally SUCCEEDED
-`scheduling_status` | By the current scheduling status of the event
+`scheduling_status` | By the current scheduling status of the event [DEPRECATED]
 `series_name`       | By the series name of the event
 `location`          | By the location (capture agent) that the event will be or has been recorded on
 
@@ -90,7 +90,7 @@ Field                | Type                                 | Description
 `presenter`\*        | [`array[string]`](types.md#array)    | The presenters of this event
 `created`\*          | [`datetime`](types.md#date-and-time) | The date and time this event was created
 `subjects`\*         | [`array[string]`](types.md#array)    | The subjects of this event
-`start`\*            | [`datetime`](types.md#date-and-time) | The bibliographic start date and time of this event
+`start`              | [`datetime`](types.md#date-and-time) | The technical (version < 1.4.0) or bibliographic (version >= 1.4.0) start date and time of this event
 `description`\*      | [`string`](types.md#basic)           | The description of this event
 `title`\*            | [`string`](types.md#basic)           | The title of this event
 `processing_state`   | [`string`](types.md#basic)           | The current processing state of this event
@@ -275,14 +275,25 @@ acl:
 ]
 ```
 
-scheduling (`rrule` is optional and can be used to schedule multiple events):
+scheduling a single event:
 ```
 {
   "agent_id": "ca24",
   "start": "2018-03-27T16:00:00Z",
   "end": "2018-03-27T19:00:00Z",
+  "inputs": ["default"]
+}
+```
+
+scheduling multiple events:
+```
+{
+  "agent_id": "ca24",
+  "start": "2019-05-20T16:00:00Z",
+  "end": "2019-06-10T19:00:00Z",
   "inputs": ["default"],
-  "rrule":"FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=16;BYMINUTE=0"
+  "rrule":"FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=16;BYMINUTE=0",
+  "duration":1080000;
 }
 ```
 
@@ -355,7 +366,7 @@ Field                | Type                                 | Description
 `presenter`\*        | [`array[string]`](types.md#array)    | The presenters of this event
 `created`\*          | [`datetime`](types.md#date-and-time) | The date and time this event was created
 `subjects`\*         | [`array[string]`](types.md#array)    | The subjects of this event
-`start`              | [`datetime`](types.md#date-and-time) | The technical start date and time of this event
+`start`              | [`datetime`](types.md#date-and-time) | The technical (version < 1.4.0) or bibliographic (version >= 1.4.0) start date and time of this event
 `description`\*      | [`string`](types.md#basic)           | The description of this event
 `title`\*            | [`string`](types.md#basic)           | The title of this event
 `processing_state`   | [`string`](types.md#basic)           | The current processing state of this event
@@ -758,6 +769,10 @@ __Response__
 
 Returns an event's list of publications.
 
+Query String Parameter     |Type                         | Description
+:--------------------------|:----------------------------|:-----------
+`sign`                     | [`boolean`](types.md#basic) | Whether public distribution urls should be signed
+
 __Response__
 
 `200 (OK)`: The list of publications is returned.<br/>
@@ -783,6 +798,10 @@ __Response__
 ### GET /api/events/{event_id}/publications/{publication_id}
 
 Returns a single publication.
+
+Query String Parameter     |Type                         | Description
+:--------------------------|:----------------------------|:-----------
+`sign`                     | [`boolean`](types.md#basic) | Whether public distribution urls should be signed
 
 __Response__
 
@@ -886,9 +905,10 @@ Available since API version 1.1.0.
 
 Update the scheduling information of the event with id `{event_id}`.
 
-Form Parameters             |Type            | Description
-:---------------------------|:---------------|:----------------------------
-`scheduling`                | `string`       | The scheduling information.
+Form Parameters             |Type            | Description                              | Default | Version
+:---------------------------|:---------------|:-----------------------------------------|:--------|:-------
+`scheduling`                | `string`       | The scheduling information.              | <span class="required">Required</span>| 1.1.0
+`allowConflict`             | `boolean`      | Allow conflicts when updating scheduling.| false   | 1.2.0
 
 __Sample__
 
@@ -919,3 +939,13 @@ In case of a conflict:
   }
 ]
 ```
+
+`allowConflict` allows the schedule to be updated without checking for conflicts.
+To allow conflicts (`true`) the call **MUST** be made with a user that has an _Administrative Role_.
+
+If not handled properly this will likely cause two or more events to be
+scheduled on a particular capture agent at the same time, which will then
+cause a capture failure for all but one of the events.
+
+The person making this call and allowing conflicts to exist, will bear the
+responsibility of resolving the conflicts that might result.

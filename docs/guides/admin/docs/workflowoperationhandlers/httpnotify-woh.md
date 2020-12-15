@@ -3,12 +3,13 @@
 ## Description
 Opencast can through this operation notify any HTTP endpoint about the process of the workflow.
 
-## Parameter Table A parameter that is always posted is the workflow instance identifier in the parameter named
+## Parameter Table
+A parameter that is always posted is the workflow instance identifier in the parameter named
 **workflowInstanceId** containing the current workflow’s identifier.
 
 |Key       |Required |Description                                                                              |Example|
 |----------|---------|-------------------------------------------------------------------------------------------|-----|
-|url       |**true** |The target url to notify                                                                   |http://test.ch|
+|url       |**true** |The target URL to notify                                                                   |http://test.ch|
 |subject   |false    |The name of the event to notify from. The following events are planned: importing\_started, imported, prepared, processing\_started, published|importing\_started|
 |message   |false    |Data supporting the notification. Think of this as the body of an e-mail                   |internal::25|
 |method    |false    |Supported methods are "put", "post". If no method is specified, "post" is used by default  |post|

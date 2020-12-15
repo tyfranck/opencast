@@ -60,6 +60,20 @@ public class Activator implements BundleActivator {
             "org.h2.Driver");
     String jdbcUrl = getConfigProperty(bundleContext.getProperty("org.opencastproject.db.jdbc.url"),
             "jdbc:h2:" + rootDir);
+    if ("org.h2.Driver".equals(jdbcDriver)) {
+      logger.warn("\n"
+          + "######################################################\n"
+          + "#                                                    #\n"
+          + "# WARNING: Opencast is using an H2 database.         #\n"
+          + "#          Never do this in production.              #\n"
+          + "#                                                    #\n"
+          + "#          For more information about database       #\n"
+          + "#          configuration, see:                       #\n"
+          + "#                                                    #\n"
+          + "#          https://docs.opencast.org                 #\n"
+          + "#                                                    #\n"
+          + "######################################################");
+    }
     String jdbcUser = getConfigProperty(bundleContext.getProperty("org.opencastproject.db.jdbc.user"), "sa");
     String jdbcPass = getConfigProperty(bundleContext.getProperty("org.opencastproject.db.jdbc.pass"), "sa");
 
@@ -112,8 +126,7 @@ public class Activator implements BundleActivator {
       dsProps.put("osgi.jndi.service.name", "jdbc/opencast");
       datasourceRegistration = bundleContext.registerService(DataSource.class.getName(), pooledDataSource, dsProps);
     } catch (SQLException e) {
-      logger.error("Connection attempt to {} failed", jdbcUrl);
-      logger.error("Exception: ", e);
+      logger.error("Connection attempt to {} failed", jdbcUrl, e);
       throw e;
     } finally {
       if (connection != null)

@@ -1,8 +1,7 @@
 Opencast
 ========
 
-[![Build Status](https://travis-ci.org/opencast/opencast.svg?branch=develop)
-](https://travis-ci.org/opencast/opencast)
+![Test Opencast](https://github.com/opencast/opencast/workflows/Test%20Opencast/badge.svg)
 
 Open Source Lecture Capture & Video Management for Education
 
@@ -18,13 +17,6 @@ Installation
 
 Installation instructions can be found locally at `docs/guides/admin/docs` or in
 our [online documentation](https://docs.opencast.org).
-
-
-Issue Tracker
--------------
-
-If you have found a bug, please file a ticket in our [issue tracker
-](https://opencast.jira.com).
 
 
 Community

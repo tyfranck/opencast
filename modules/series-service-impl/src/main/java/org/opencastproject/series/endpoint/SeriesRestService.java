@@ -68,7 +68,6 @@ import com.entwinemedia.fn.data.json.SimpleSerializer;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.osgi.service.component.ComponentContext;
@@ -84,7 +83,6 @@ import java.text.ParseException;
 import java.util.Map;
 
 import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 import javax.ws.rs.DELETE;
 import javax.ws.rs.DefaultValue;
 import javax.ws.rs.FormParam;
@@ -99,7 +97,6 @@ import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
-import javax.ws.rs.core.Response.Status;
 
 /**
  * REST endpoint for Series Service.
@@ -112,7 +109,7 @@ import javax.ws.rs.core.Response.Status;
                 + "not working and is either restarting or has failed",
         "A status code 500 means a general failure has occurred which is not recoverable and was not anticipated. In "
                 + "other words, there is a bug! You should file an error report with your server logs from the time when the "
-                + "error occurred: <a href=\"https://opencast.jira.com\">Opencast Issue Tracker</a>" })
+                + "error occurred: <a href=\"https://github.com/opencast/opencast/issues\">Opencast Issue Tracker</a>" })
 public class SeriesRestService {
 
   private static final String SERIES_ELEMENT_CONTENT_TYPE_PREFIX = "series/";
@@ -229,7 +226,7 @@ public class SeriesRestService {
   @GET
   @Produces(MediaType.TEXT_XML)
   @Path("{seriesID:.+}.xml")
-  @RestQuery(name = "getAsXml", description = "Returns the series with the given identifier", returnDescription = "Returns the series dublin core XML document", pathParameters = { @RestParameter(name = "seriesID", isRequired = true, description = "The series identifier", type = STRING) }, reponses = {
+  @RestQuery(name = "getAsXml", description = "Returns the series with the given identifier", returnDescription = "Returns the series dublin core XML document", pathParameters = { @RestParameter(name = "seriesID", isRequired = true, description = "The series identifier", type = STRING) }, responses = {
           @RestResponse(responseCode = SC_OK, description = "The series dublin core."),
           @RestResponse(responseCode = SC_NOT_FOUND, description = "No series with this identifier was found."),
           @RestResponse(responseCode = SC_FORBIDDEN, description = "You do not have permission to view this series."),
@@ -254,7 +251,7 @@ public class SeriesRestService {
   @GET
   @Produces(MediaType.APPLICATION_JSON)
   @Path("{seriesID:.+}.json")
-  @RestQuery(name = "getAsJson", description = "Returns the series with the given identifier", returnDescription = "Returns the series dublin core JSON document", pathParameters = { @RestParameter(name = "seriesID", isRequired = true, description = "The series identifier", type = STRING) }, reponses = {
+  @RestQuery(name = "getAsJson", description = "Returns the series with the given identifier", returnDescription = "Returns the series dublin core JSON document", pathParameters = { @RestParameter(name = "seriesID", isRequired = true, description = "The series identifier", type = STRING) }, responses = {
           @RestResponse(responseCode = SC_OK, description = "The series dublin core."),
           @RestResponse(responseCode = SC_NOT_FOUND, description = "No series with this identifier was found."),
           @RestResponse(responseCode = SC_UNAUTHORIZED, description = "You do not have permission to view this series. Maybe you need to authenticate.") })
@@ -278,7 +275,7 @@ public class SeriesRestService {
   @GET
   @Produces(MediaType.TEXT_XML)
   @Path("/{seriesID:.+}/acl.xml")
-  @RestQuery(name = "getAclAsXml", description = "Returns the access control list for the series with the given identifier", returnDescription = "Returns the series ACL as XML", pathParameters = { @RestParameter(name = "seriesID", isRequired = true, description = "The series identifier", type = STRING) }, reponses = {
+  @RestQuery(name = "getAclAsXml", description = "Returns the access control list for the series with the given identifier", returnDescription = "Returns the series ACL as XML", pathParameters = { @RestParameter(name = "seriesID", isRequired = true, description = "The series identifier", type = STRING) }, responses = {
           @RestResponse(responseCode = SC_OK, description = "The access control list."),
           @RestResponse(responseCode = SC_NOT_FOUND, description = "No series with this identifier was found.") })
   public Response getSeriesAccessControlListXml(@PathParam("seriesID") String seriesID) {
@@ -288,7 +285,7 @@ public class SeriesRestService {
   @GET
   @Produces(MediaType.APPLICATION_JSON)
   @Path("/{seriesID:.+}/acl.json")
-  @RestQuery(name = "getAclAsJson", description = "Returns the access control list for the series with the given identifier", returnDescription = "Returns the series ACL as JSON", pathParameters = { @RestParameter(name = "seriesID", isRequired = true, description = "The series identifier", type = STRING) }, reponses = {
+  @RestQuery(name = "getAclAsJson", description = "Returns the access control list for the series with the given identifier", returnDescription = "Returns the series ACL as JSON", pathParameters = { @RestParameter(name = "seriesID", isRequired = true, description = "The series identifier", type = STRING) }, responses = {
           @RestResponse(responseCode = SC_OK, description = "The access control list."),
           @RestResponse(responseCode = SC_NOT_FOUND, description = "No series with this identifier was found.") })
   public Response getSeriesAccessControlListJson(@PathParam("seriesID") String seriesID) {
@@ -322,7 +319,7 @@ public class SeriesRestService {
           @RestParameter(name = "acl", isRequired = false, defaultValue = SAMPLE_ACCESS_CONTROL_LIST,
                          description = "The access control list for the series", type = TEXT),
           @RestParameter(name = "override", isRequired = false, defaultValue = "false",
-                         description = "If true the series ACL will take precedence over any existing episode ACL", type = STRING)}, reponses = {
+                         description = "If true the series ACL will take precedence over any existing episode ACL", type = STRING)}, responses = {
           @RestResponse(responseCode = SC_BAD_REQUEST, description = "The required form params were missing in the request."),
           @RestResponse(responseCode = SC_NO_CONTENT, description = "The access control list has been updated."),
           @RestResponse(responseCode = SC_UNAUTHORIZED, description = "If the current user is not authorized to perform this action"),
@@ -383,7 +380,7 @@ public class SeriesRestService {
                      description = "If true the series ACL will take precedence over any existing episode ACL", type = STRING)
     }, pathParameters = {
       @RestParameter(name = "seriesID", isRequired = true, description = "The series identifier", type = STRING)
-  }, reponses = {
+  }, responses = {
       @RestResponse(responseCode = SC_NOT_FOUND, description = "No series with this identifier was found."),
       @RestResponse(responseCode = SC_NO_CONTENT, description = "The access control list has been updated."),
       @RestResponse(responseCode = SC_CREATED, description = "The access control list has been created."),
@@ -417,27 +414,9 @@ public class SeriesRestService {
     throw new WebApplicationException(Response.Status.INTERNAL_SERVER_ERROR);
   }
 
-  @GET
-  @Path("{id}/optOut")
-  @RestQuery(name = "IsOptOut", description = "Returns true if the series is opted out", returnDescription = "True if opted out, false if not", pathParameters = { @RestParameter(name = "id", description = "ID of series", isRequired = true, type = Type.STRING) }, reponses = {
-          @RestResponse(responseCode = HttpServletResponse.SC_OK, description = "The Series opt out status"),
-          @RestResponse(responseCode = HttpServletResponse.SC_NOT_FOUND, description = "Series with specified ID does not exist") })
-  public Response getOptOut(@PathParam("id") String seriesId) {
-    try {
-      boolean optedOut = seriesService.isOptOut(seriesId);
-      return Response.ok(Boolean.toString(optedOut)).build();
-    } catch (NotFoundException e) {
-      logger.warn("Series with id '{}' does not exist.", seriesId);
-      return Response.status(Status.NOT_FOUND).build();
-    } catch (Exception e) {
-      logger.warn("Unable to get series opt out status with id '{}'", seriesId, e);
-      throw new WebApplicationException(Response.Status.INTERNAL_SERVER_ERROR);
-    }
-  }
-
   @DELETE
   @Path("/{seriesID:.+}")
-  @RestQuery(name = "delete", description = "Delete a series", returnDescription = "No content.", pathParameters = { @RestParameter(name = "seriesID", isRequired = true, description = "The series identifier", type = STRING) }, reponses = {
+  @RestQuery(name = "delete", description = "Delete a series", returnDescription = "No content.", pathParameters = { @RestParameter(name = "seriesID", isRequired = true, description = "The series identifier", type = STRING) }, responses = {
           @RestResponse(responseCode = SC_NOT_FOUND, description = "No series with this identifier was found."),
           @RestResponse(responseCode = SC_UNAUTHORIZED, description = "If the current user is not authorized to perform this action"),
           @RestResponse(responseCode = SC_NO_CONTENT, description = "The series was deleted.") })
@@ -456,7 +435,7 @@ public class SeriesRestService {
   @GET
   @Produces(MediaType.TEXT_PLAIN)
   @Path("/count")
-  @RestQuery(name = "count", description = "Returns the number of series", returnDescription = "Returns the number of series", reponses = { @RestResponse(responseCode = SC_OK, description = "The number of series") })
+  @RestQuery(name = "count", description = "Returns the number of series", returnDescription = "Returns the number of series", responses = { @RestResponse(responseCode = SC_OK, description = "The number of series") })
   public Response getCount() throws UnauthorizedException {
     try {
       int count = seriesService.getSeriesCount();
@@ -489,7 +468,7 @@ public class SeriesRestService {
           @RestParameter(name = "description", isRequired = false, description = "The series description", type = STRING),
           @RestParameter(name = "sort", isRequired = false, description = "The sort order.  May include any of the following: TITLE, SUBJECT, CREATOR, PUBLISHER, CONTRIBUTOR, ABSTRACT, DESCRIPTION, CREATED, AVAILABLE_FROM, AVAILABLE_TO, LANGUAGE, RIGHTS_HOLDER, SPATIAL, TEMPORAL, IS_PART_OF, REPLACES, TYPE, ACCESS, LICENCE.  Add '_DESC' to reverse the sort order (e.g. TITLE_DESC).", type = STRING),
           @RestParameter(name = "startPage", isRequired = false, description = "The page offset", type = STRING),
-          @RestParameter(name = "count", isRequired = false, description = "Results per page (max 100)", type = STRING) }, reponses = {
+          @RestParameter(name = "count", isRequired = false, description = "Results per page (max 100)", type = STRING) }, responses = {
           @RestResponse(responseCode = SC_OK, description = "The access control list."),
           @RestResponse(responseCode = SC_UNAUTHORIZED, description = "If the current user is not authorized to perform this action") })
   // CHECKSTYLE:OFF
@@ -538,7 +517,7 @@ public class SeriesRestService {
           @RestParameter(name = "description", isRequired = false, description = "The series description", type = STRING),
           @RestParameter(name = "sort", isRequired = false, description = "The sort order.  May include any of the following: TITLE, SUBJECT, CREATOR, PUBLISHER, CONTRIBUTOR, ABSTRACT, DESCRIPTION, CREATED, AVAILABLE_FROM, AVAILABLE_TO, LANGUAGE, RIGHTS_HOLDER, SPATIAL, TEMPORAL, IS_PART_OF, REPLACES, TYPE, ACCESS, LICENCE.  Add '_DESC' to reverse the sort order (e.g. TITLE_DESC).", type = STRING),
           @RestParameter(name = "startPage", isRequired = false, description = "The page offset", type = STRING),
-          @RestParameter(name = "count", isRequired = false, description = "Results per page (max 100)", type = STRING) }, reponses = {
+          @RestParameter(name = "count", isRequired = false, description = "Results per page (max 100)", type = STRING) }, responses = {
           @RestResponse(responseCode = SC_OK, description = "The access control list."),
           @RestResponse(responseCode = SC_UNAUTHORIZED, description = "If the current user is not authorized to perform this action") })
   // CHECKSTYLE:OFF
@@ -569,7 +548,7 @@ public class SeriesRestService {
   @GET
   @Produces(MediaType.APPLICATION_JSON)
   @Path("{id}/properties.json")
-  @RestQuery(name = "getSeriesProperties", description = "Returns the series properties", returnDescription = "Returns the series properties as JSON", pathParameters = { @RestParameter(name = "id", description = "ID of series", isRequired = true, type = Type.STRING) }, reponses = {
+  @RestQuery(name = "getSeriesProperties", description = "Returns the series properties", returnDescription = "Returns the series properties as JSON", pathParameters = { @RestParameter(name = "id", description = "ID of series", isRequired = true, type = Type.STRING) }, responses = {
           @RestResponse(responseCode = SC_OK, description = "The access control list."),
           @RestResponse(responseCode = SC_UNAUTHORIZED, description = "If the current user is not authorized to perform this action") })
   public Response getSeriesPropertiesAsJson(@PathParam("id") String seriesId) throws UnauthorizedException,
@@ -602,7 +581,7 @@ public class SeriesRestService {
   @Path("{seriesId}/property/{propertyName}.json")
   @RestQuery(name = "getSeriesProperty", description = "Returns a series property value", returnDescription = "Returns the series property value", pathParameters = {
           @RestParameter(name = "seriesId", description = "ID of series", isRequired = true, type = Type.STRING),
-          @RestParameter(name = "propertyName", description = "Name of series property", isRequired = true, type = Type.STRING) }, reponses = {
+          @RestParameter(name = "propertyName", description = "Name of series property", isRequired = true, type = Type.STRING) }, responses = {
           @RestResponse(responseCode = SC_OK, description = "The access control list."),
           @RestResponse(responseCode = SC_UNAUTHORIZED, description = "If the current user is not authorized to perform this action") })
   public Response getSeriesProperty(@PathParam("seriesId") String seriesId,
@@ -632,7 +611,7 @@ public class SeriesRestService {
   @Path("/{seriesId}/property")
   @RestQuery(name = "updateSeriesProperty", description = "Updates a series property", returnDescription = "No content.", restParameters = {
           @RestParameter(name = "name", isRequired = true, description = "The property's name", type = TEXT),
-          @RestParameter(name = "value", isRequired = true, description = "The property's value", type = TEXT) }, pathParameters = { @RestParameter(name = "seriesId", isRequired = true, description = "The series identifier", type = STRING) }, reponses = {
+          @RestParameter(name = "value", isRequired = true, description = "The property's value", type = TEXT) }, pathParameters = { @RestParameter(name = "seriesId", isRequired = true, description = "The series identifier", type = STRING) }, responses = {
           @RestResponse(responseCode = SC_NOT_FOUND, description = "No series with this identifier was found."),
           @RestResponse(responseCode = SC_NO_CONTENT, description = "The access control list has been updated."),
           @RestResponse(responseCode = SC_UNAUTHORIZED, description = "If the current user is not authorized to perform this action"),
@@ -657,8 +636,7 @@ public class SeriesRestService {
     } catch (NotFoundException e) {
       return Response.status(NOT_FOUND).build();
     } catch (SeriesException e) {
-      logger.warn("Could not update series property for series {} property {}:{} : {}", seriesId, name,
-              value, ExceptionUtils.getStackTrace(e));
+      logger.warn("Could not update series property for series {} property {}:{} :", seriesId, name, value, e);
     }
     throw new WebApplicationException(Response.Status.INTERNAL_SERVER_ERROR);
   }
@@ -667,7 +645,7 @@ public class SeriesRestService {
   @Path("{seriesId}/property/{propertyName}")
   @RestQuery(name = "deleteSeriesProperty", description = "Deletes a series property", returnDescription = "No Content", pathParameters = {
           @RestParameter(name = "seriesId", description = "ID of series", isRequired = true, type = Type.STRING),
-          @RestParameter(name = "propertyName", description = "Name of series property", isRequired = true, type = Type.STRING) }, reponses = {
+          @RestParameter(name = "propertyName", description = "Name of series property", isRequired = true, type = Type.STRING) }, responses = {
           @RestResponse(responseCode = SC_NO_CONTENT, description = "The series property has been deleted."),
           @RestResponse(responseCode = SC_NOT_FOUND, description = "The series or property has not been found."),
           @RestResponse(responseCode = SC_UNAUTHORIZED, description = "If the current user is not authorized to perform this action") })
@@ -689,8 +667,7 @@ public class SeriesRestService {
     } catch (NotFoundException e) {
       throw e;
     } catch (Exception e) {
-      logger.warn("Could not delete series '{}' property '{}' query: {}", seriesId, propertyName,
-              ExceptionUtils.getStackTrace(e));
+      logger.warn("Could not delete series '{}' property '{}' query:", seriesId, propertyName, e);
     }
     throw new WebApplicationException(Response.Status.INTERNAL_SERVER_ERROR);
   }
@@ -807,7 +784,7 @@ public class SeriesRestService {
   @Path("allSeriesIdTitle.json")
   @Produces(MediaType.APPLICATION_JSON)
   @RestQuery(name = "getAll", description = "Returns a list of identifier and title of all series",
-          returnDescription = "Json list of identifier and title of all series", reponses = {
+          returnDescription = "Json list of identifier and title of all series", responses = {
             @RestResponse(responseCode = SC_OK, description = "A list with series"),
             @RestResponse(responseCode = SC_FORBIDDEN, description = "A user is not allowed to list all series"),
             @RestResponse(responseCode = SC_INTERNAL_SERVER_ERROR, description = "Error while processing the request") })
@@ -834,7 +811,7 @@ public class SeriesRestService {
   @GET
   @Path("{seriesId}/elements.json")
   @Produces(MediaType.APPLICATION_JSON)
-  @RestQuery(name = "getSeriesElements", description = "Returns all the element types of a series", returnDescription = "Returns a JSON array with all the types of elements of the given series.", pathParameters = { @RestParameter(name = "seriesId", description = "The series identifier", type = STRING, isRequired = true) }, reponses = {
+  @RestQuery(name = "getSeriesElements", description = "Returns all the element types of a series", returnDescription = "Returns a JSON array with all the types of elements of the given series.", pathParameters = { @RestParameter(name = "seriesId", description = "The series identifier", type = STRING, isRequired = true) }, responses = {
           @RestResponse(responseCode = SC_OK, description = "Series found"),
           @RestResponse(responseCode = SC_NOT_FOUND, description = "Series not found"),
           @RestResponse(responseCode = SC_INTERNAL_SERVER_ERROR, description = "Error while processing the request") })
@@ -858,7 +835,7 @@ public class SeriesRestService {
   @Path("{seriesId}/elements/{elementType}")
   @RestQuery(name = "getSeriesElement", description = "Returns the series element", returnDescription = "The data of the series element", pathParameters = {
           @RestParameter(name = "seriesId", description = "The series identifier", type = STRING, isRequired = true),
-          @RestParameter(name = "elementType", description = "The element type. This is equal to the subtype of the media type of this element: series/<elementtype>", type = STRING, isRequired = true) }, reponses = {
+          @RestParameter(name = "elementType", description = "The element type. This is equal to the subtype of the media type of this element: series/<elementtype>", type = STRING, isRequired = true) }, responses = {
           @RestResponse(responseCode = SC_OK, description = "Series element found"),
           @RestResponse(responseCode = SC_NOT_FOUND, description = "Series element not found"),
           @RestResponse(responseCode = SC_INTERNAL_SERVER_ERROR, description = "Error while processing the request") })
@@ -872,8 +849,7 @@ public class SeriesRestService {
         return R.notFound();
       }
     } catch (SeriesException e) {
-      logger.warn("Error while returning element '{}' of series '{}': {}", elementType, seriesId,
-              ExceptionUtils.getStackTrace(e));
+      logger.warn("Error while returning element '{}' of series '{}':", elementType, seriesId, e);
       return R.serverError();
     }
   }
@@ -882,7 +858,7 @@ public class SeriesRestService {
   @Path("{seriesId}/elements/{elementType}")
   @RestQuery(name = "updateSeriesElement", description = "Updates an existing series element", returnDescription = "An empty response", pathParameters = {
           @RestParameter(name = "seriesId", description = "The series identifier", type = STRING, isRequired = true),
-          @RestParameter(name = "elementType", description = "The element type", type = STRING, isRequired = true) }, reponses = {
+          @RestParameter(name = "elementType", description = "The element type", type = STRING, isRequired = true) }, responses = {
           @RestResponse(responseCode = SC_NO_CONTENT, description = "Series element updated"),
           @RestResponse(responseCode = SC_CREATED, description = "Series element created"),
           @RestResponse(responseCode = SC_INTERNAL_SERVER_ERROR, description = "Error while processing the request") })
@@ -920,7 +896,7 @@ public class SeriesRestService {
   @Path("{seriesId}/elements/{elementType}")
   @RestQuery(name = "deleteSeriesElement", description = "Deletes a series element", returnDescription = "An empty response", pathParameters = {
           @RestParameter(name = "seriesId", description = "The series identifier", type = STRING, isRequired = true),
-          @RestParameter(name = "elementType", description = "The element type", type = STRING, isRequired = true) }, reponses = {
+          @RestParameter(name = "elementType", description = "The element type", type = STRING, isRequired = true) }, responses = {
           @RestResponse(responseCode = SC_NO_CONTENT, description = "Series element deleted"),
           @RestResponse(responseCode = SC_NOT_FOUND, description = "Series element not found"),
           @RestResponse(responseCode = SC_INTERNAL_SERVER_ERROR, description = "Error while processing the request") })

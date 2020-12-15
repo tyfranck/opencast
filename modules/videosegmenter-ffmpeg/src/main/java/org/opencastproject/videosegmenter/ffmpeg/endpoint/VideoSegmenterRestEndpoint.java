@@ -59,7 +59,7 @@ import javax.ws.rs.core.Response;
                 + "not working and is either restarting or has failed",
         "A status code 500 means a general failure has occurred which is not recoverable and was not anticipated. In "
                 + "other words, there is a bug! You should file an error report with your server logs from the time when the "
-                + "error occurred: <a href=\"https://opencast.jira.com\">Opencast Issue Tracker</a>" })
+                + "error occurred: <a href=\"https://github.com/opencast/opencast/issues\">Opencast Issue Tracker</a>" })
 public class VideoSegmenterRestEndpoint extends AbstractJobProducerEndpoint {
 
   /** The logger */
@@ -105,7 +105,7 @@ public class VideoSegmenterRestEndpoint extends AbstractJobProducerEndpoint {
   @POST
   @Path("")
   @Produces(MediaType.TEXT_XML)
-  @RestQuery(name = "segment", description = "Submit a track for segmentation.", restParameters = { @RestParameter(description = "The track to segment.", isRequired = true, name = "track", type = RestParameter.Type.FILE) }, reponses = {
+  @RestQuery(name = "segment", description = "Submit a track for segmentation.", restParameters = { @RestParameter(description = "The track to segment.", isRequired = true, name = "track", type = RestParameter.Type.FILE) }, responses = {
           @RestResponse(description = "The job ID to use when polling for the resulting mpeg7 catalog.", responseCode = HttpServletResponse.SC_OK),
           @RestResponse(description = "The \"segment\" is NULL or not a valid track type.", responseCode = HttpServletResponse.SC_BAD_REQUEST),
           @RestResponse(description = "The underlying service could not segment the video.", responseCode = HttpServletResponse.SC_INTERNAL_SERVER_ERROR) }, returnDescription = "The job ID to use when polling for the resulting mpeg7 catalog.")

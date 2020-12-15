@@ -340,13 +340,12 @@ public class CaptureNowProlongingService implements ManagedService {
    */
   public MediaPackage getCurrentRecording(String agentId)
           throws NotFoundException, UnauthorizedException, SchedulerException {
-    List<MediaPackage> search = schedulerService.search(Opt.some(agentId), Opt.<Date> none(), Opt.some(new Date()),
-            Opt.some(new Date()), Opt.<Date> none());
-    if (search.isEmpty()) {
+    Opt<MediaPackage> current = schedulerService.getCurrentRecording(agentId);
+    if (current.isNone()) {
       logger.warn("Unable to load the current recording for agent '{}': no recording found", agentId);
       throw new NotFoundException("No current recording found for agent '" + agentId + "'");
     }
-    return search.get(0);
+    return current.get();
   }
 
   /**
@@ -371,7 +370,7 @@ public class CaptureNowProlongingService implements ManagedService {
    */
   public void prolongEvent(MediaPackage event, DublinCoreCatalog dublinCore, String agentId)
           throws UnauthorizedException, NotFoundException, SchedulerException, IllegalArgumentException, IOException {
-    String eventId = event.getIdentifier().compact();
+    String eventId = event.getIdentifier().toString();
 
     DCMIPeriod period = EncodingSchemeUtils.decodeMandatoryPeriod(dublinCore.getFirst(DublinCore.PROPERTY_TEMPORAL));
 
@@ -382,7 +381,7 @@ public class CaptureNowProlongingService implements ManagedService {
 
     List<MediaPackage> events = schedulerService.findConflictingEvents(agentId, period.getStart(), prolongedEndDate);
     for (MediaPackage conflictMediaPackage : events) {
-      if (eventId.equals(conflictMediaPackage.getIdentifier().compact()))
+      if (eventId.equals(conflictMediaPackage.getIdentifier().toString()))
         continue;
 
       Opt<DublinCoreCatalog> conflictingDc = DublinCoreUtil.loadEpisodeDublinCore(workspace, conflictMediaPackage);
@@ -418,7 +417,7 @@ public class CaptureNowProlongingService implements ManagedService {
 
     schedulerService.updateEvent(eventId, Opt.<Date> none(), Opt.some(prolongedEndDate), Opt.<String> none(),
             Opt.<Set<String>> none(), Opt.some(event), Opt.<Map<String, String>> none(),
-            Opt.<Map<String, String>> none(), Opt.<Opt<Boolean>> none(), SchedulerService.ORIGIN);
+            Opt.<Map<String, String>> none());
   }
 
 }

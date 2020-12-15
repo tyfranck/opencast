@@ -26,7 +26,6 @@ import org.opencastproject.execute.api.ExecuteService;
 import org.opencastproject.inspection.api.MediaInspectionException;
 import org.opencastproject.inspection.api.MediaInspectionService;
 import org.opencastproject.job.api.Job;
-import org.opencastproject.job.api.JobBarrier;
 import org.opencastproject.job.api.JobContext;
 import org.opencastproject.mediapackage.MediaPackage;
 import org.opencastproject.mediapackage.MediaPackageElement;
@@ -55,8 +54,6 @@ import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
-import java.util.SortedMap;
-import java.util.TreeMap;
 
 /**
  * Runs an operation once with using elements within a certain MediaPackage as parameters
@@ -104,22 +101,6 @@ public class ExecuteOnceWorkflowOperationHandler extends AbstractWorkflowOperati
 
   /** The workspace service */
   protected Workspace workspace;
-
-  /** The configuration options for this handler */
-  private static final SortedMap<String, String> CONFIG_OPTIONS;
-
-  static {
-    CONFIG_OPTIONS = new TreeMap<String, String>();
-    CONFIG_OPTIONS.put(EXEC_PROPERTY, "The full path the executable to run");
-    CONFIG_OPTIONS.put(PARAMS_PROPERTY, "Space separated list of command line parameters to pass to the executable')");
-    CONFIG_OPTIONS.put(LOAD_PROPERTY, "A floating point estimate of the load imposed on the node by this job");
-    CONFIG_OPTIONS.put(OUTPUT_FILENAME_PROPERTY, "The name of the elements created by this operation");
-    CONFIG_OPTIONS.put(EXPECTED_TYPE_PROPERTY,
-            "The type of the element returned by this operation. Accepted values are: manifest, timeline, track, catalog, attachment, other");
-    CONFIG_OPTIONS.put(TARGET_FLAVOR_PROPERTY, "The flavor that the resulting mediapackage elements will be assigned");
-    CONFIG_OPTIONS.put(TARGET_TAGS_PROPERTY, "The tags that the resulting mediapackage elements will be assigned");
-    CONFIG_OPTIONS.put(SET_WF_PROPS_PROPERTY, "If true, command output will be used to set workflow properties");
-  }
 
   /**
    * {@inheritDoc}
@@ -209,8 +190,8 @@ public class ExecuteOnceWorkflowOperationHandler extends AbstractWorkflowOperati
             // Have the track inspected and return the result
             Job inspectionJob = null;
             inspectionJob = inspectionService.inspect(resultElement.getURI());
-            JobBarrier barrier = new JobBarrier(job, serviceRegistry, inspectionJob);
-            if (!barrier.waitForJobs().isSuccess()) {
+
+            if (!waitForStatus(inspectionJob).isSuccess()) {
               throw new ExecuteException("Media inspection of " + resultElement.getURI() + " failed");
             }
 
@@ -286,17 +267,6 @@ public class ExecuteOnceWorkflowOperationHandler extends AbstractWorkflowOperati
   @Override
   public void destroy(WorkflowInstance workflowInstance, JobContext context) throws WorkflowOperationException {
     // Do nothing (nothing to clean up, the command line program should do this itself)
-  }
-
-
-  /**
-   * {@inheritDoc}
-   * 
-   * @see org.opencastproject.workflow.api.WorkflowOperationHandler#getConfigurationOptions()
-   */
-  @Override
-  public SortedMap<String, String> getConfigurationOptions() {
-    return CONFIG_OPTIONS;
   }
 
   /**

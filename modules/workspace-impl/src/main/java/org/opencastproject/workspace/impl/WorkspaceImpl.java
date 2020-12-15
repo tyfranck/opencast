@@ -34,10 +34,13 @@ import static org.opencastproject.util.data.Either.right;
 import static org.opencastproject.util.data.Option.none;
 import static org.opencastproject.util.data.Option.some;
 import static org.opencastproject.util.data.Prelude.sleep;
-import static org.opencastproject.util.data.Tuple.tuple;
 
+import org.opencastproject.assetmanager.util.AssetPathUtils;
+import org.opencastproject.assetmanager.util.DistributionPathUtils;
 import org.opencastproject.mediapackage.identifier.Id;
+import org.opencastproject.security.api.SecurityService;
 import org.opencastproject.security.api.TrustedHttpClient;
+import org.opencastproject.security.api.TrustedHttpClientException;
 import org.opencastproject.util.FileSupport;
 import org.opencastproject.util.HttpUtil;
 import org.opencastproject.util.IoSupport;
@@ -47,7 +50,6 @@ import org.opencastproject.util.data.Effect;
 import org.opencastproject.util.data.Either;
 import org.opencastproject.util.data.Function;
 import org.opencastproject.util.data.Option;
-import org.opencastproject.util.data.Tuple;
 import org.opencastproject.util.data.functions.Misc;
 import org.opencastproject.util.jmx.JmxUtil;
 import org.opencastproject.workingfilerepository.api.PathMappable;
@@ -65,6 +67,10 @@ import org.apache.http.HttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.utils.URIBuilder;
 import org.osgi.service.component.ComponentContext;
+import org.osgi.service.component.annotations.Activate;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Deactivate;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -77,7 +83,11 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
+import java.util.Collections;
 import java.util.Date;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArraySet;
 
@@ -94,6 +104,13 @@ import javax.ws.rs.core.UriBuilder;
  *
  * TODO Implement cache invalidation using the caching headers, if provided, from the remote server.
  */
+@Component(
+  property = {
+    "service.description=Workspace"
+  },
+  immediate = true,
+  service = { Workspace.class }
+)
 public final class WorkspaceImpl implements Workspace {
   /** The logging facility */
   private static final Logger logger = LoggerFactory.getLogger(WorkspaceImpl.class);
@@ -129,6 +146,8 @@ public final class WorkspaceImpl implements Workspace {
 
   private TrustedHttpClient trustedHttpClient;
 
+  private SecurityService securityService = null;
+
   /** The working file repository */
   private WorkingFileRepository wfr = null;
 
@@ -138,6 +157,13 @@ public final class WorkspaceImpl implements Workspace {
   private CopyOnWriteArraySet<String> staticCollections = new CopyOnWriteArraySet<String>();
 
   private boolean waitForResourceFlag = false;
+
+  /** the asset manager directory if locally available */
+  private String assetManagerPath = null;
+
+  /** the download url and directory if locally available */
+  private String downloadUrl = null;
+  private String downloadPath = null;
 
   /** The workspce cleaner */
   private WorkspaceCleaner workspaceCleaner = null;
@@ -178,6 +204,7 @@ public final class WorkspaceImpl implements Workspace {
    * @param cc
    *          the OSGi component context
    */
+  @Activate
   public void activate(ComponentContext cc) {
     if (this.wsRoot == null) {
       if (ensureContextProp(cc, WORKSPACE_DIR_KEY)) {
@@ -214,7 +241,7 @@ public final class WorkspaceImpl implements Workspace {
       }
 
       // Create a unique target file
-      File targetFile = null;
+      File targetFile;
       try {
         targetFile = File.createTempFile(".linktest.", ".tmp", new File(wsRoot));
         targetFile.delete();
@@ -286,9 +313,16 @@ public final class WorkspaceImpl implements Workspace {
     staticCollections.add("videosegments");
     staticCollections.add("waveform");
 
+    // Check if we can read from the asset manager locally to avoid downloading files via HTTP
+    assetManagerPath = AssetPathUtils.getAssetManagerPath(cc);
+
+    // Check if we can read published files locally to avoid downloading files via HTTP
+    downloadUrl = DistributionPathUtils.getDownloadUrl(cc);
+    downloadPath = DistributionPathUtils.getDownloadPath(cc);
   }
 
   /** Callback from OSGi on service deactivation. */
+  @Deactivate
   public void deactivate() {
     JmxUtil.unregisterMXBean(registeredMXBean);
     if (workspaceCleaner != null) {
@@ -319,7 +353,7 @@ public final class WorkspaceImpl implements Workspace {
         // does the file exist and is it up to date?
         logger.trace("Looking up {} at {}", uri.toString(), wfrCopy.getAbsolutePath());
         if (wfrCopy.isFile()) {
-          final Long workspaceFileLastModified = inWs.isFile() ? inWs.lastModified() : 0L;
+          final long workspaceFileLastModified = inWs.isFile() ? inWs.lastModified() : 0L;
           // if the file exists in the workspace, but is older than the wfr copy, replace it
           if (workspaceFileLastModified < wfrCopy.lastModified()) {
             logger.debug("Replacing {} with an updated version from the file repository", inWs.getAbsolutePath());
@@ -335,6 +369,15 @@ public final class WorkspaceImpl implements Workspace {
         }
       }
     }
+
+    // Check if we can get the files directly from the asset manager
+    final File asset = AssetPathUtils.getLocalFile(assetManagerPath, securityService.getOrganization().getId(), uri);
+    if (asset != null) {
+      logger.debug("Copy local file {} from asset manager to workspace", asset);
+      Files.copy(asset.toPath(), inWs.toPath(), StandardCopyOption.REPLACE_EXISTING);
+      return new File(inWs.getAbsolutePath());
+    }
+
     // do HTTP transfer
     return locked(inWs, downloadIfNecessary(uri));
   }
@@ -342,6 +385,7 @@ public final class WorkspaceImpl implements Workspace {
   @Override
   public InputStream read(final URI uri) throws NotFoundException, IOException {
 
+    // Check if we can get the file from the working file repository directly
     if (pathMappable != null) {
       if (uri.toString().startsWith(pathMappable.getUrlPrefix())) {
         final String localPath = uri.toString().substring(pathMappable.getUrlPrefix().length());
@@ -354,6 +398,18 @@ public final class WorkspaceImpl implements Workspace {
         }
         logger.warn("The working file repository URI and paths don't match. Looking up {} at {} failed", uri, wfrCopy);
       }
+    }
+
+    // Check if we can get the files directly from the asset manager
+    final File asset = AssetPathUtils.getLocalFile(assetManagerPath, securityService.getOrganization().getId(), uri);
+    if (asset != null) {
+      return new FileInputStream(asset);
+    }
+
+    // Check if we can get the files directly from the distribution download directory
+    final File publishedFile = DistributionPathUtils.getLocalFile(downloadPath, downloadUrl, securityService.getOrganization().getId(), uri);
+    if (publishedFile != null) {
+      return new FileInputStream(publishedFile);
     }
 
     // fall back to get() which should download the file into local workspace if necessary
@@ -401,34 +457,21 @@ public final class WorkspaceImpl implements Workspace {
         logger.debug("{} is not ready, try again later.", url);
         return left(response.getHeaders("token")[0].getValue());
       case HttpServletResponse.SC_OK:
-        logger.info("Downloading {} to {}", url, dst.getAbsolutePath());
+        logger.debug("Downloading {} to {}", url, dst.getAbsolutePath());
         return right(some(downloadTo(response, dst)));
       default:
-        logger.warn(format("Received unexpected response status %s while trying to download from %s", status, url));
+        logger.warn("Received unexpected response status {} while trying to download from {}", status, url);
         FileUtils.deleteQuietly(dst);
         return right(none(File.class));
     }
   }
 
-  /**
-   * {@link #handleDownloadResponse(org.apache.http.HttpResponse, java.net.URI, java.io.File)} as a function.
-   * <code>(URI, dst_file) -> HttpResponse -> Either token (Option File)</code>
-   */
-  private Function<HttpResponse, Either<String, Option<File>>> handleDownloadResponse(final URI src, final File dst) {
-    return new Function.X<HttpResponse, Either<String, Option<File>>>() {
-      @Override
-      public Either<String, Option<File>> xapply(HttpResponse response) throws Exception {
-        return handleDownloadResponse(response, src, dst);
-      }
-    };
-  }
-
   /** Create a get request to the given URI. */
-  private HttpGet createGetRequest(final URI src, final File dst, Tuple<String, String>... params) throws IOException {
+  private HttpGet createGetRequest(final URI src, final File dst, final Map<String, String> params) throws IOException {
     try {
       URIBuilder builder = new URIBuilder(src.toString());
-      for (final Tuple<String, String> a : params) {
-        builder.setParameter(a.getA(), a.getB());
+      for (Map.Entry<String, String> param : params.entrySet()) {
+        builder.setParameter(param.getKey(), param.getValue());
       }
       final HttpGet get = new HttpGet(builder.build());
       // if the destination file already exists add the If-None-Match header
@@ -448,16 +491,13 @@ public final class WorkspaceImpl implements Workspace {
    * @return the file
    */
   private File downloadIfNecessary(final URI src, final File dst) throws IOException, NotFoundException {
-    HttpGet get = createGetRequest(src, dst);
+    HttpGet get = createGetRequest(src, dst, Collections.emptyMap());
     while (true) {
       // run the http request and handle its response
-      final Either<Exception, Either<String, Option<File>>> result = trustedHttpClient
-              .<Either<String, Option<File>>> runner(get).run(handleDownloadResponse(src, dst));
-      // handle to result of response processing
-      // right: there's an expected result
-      for (Either<String, Option<File>> a : result.right()) {
-        // right: either a file could be found or not
-        for (Option<File> ff : a.right()) {
+      try {
+        final Either<String, Option<File>> result = handleDownloadResponse(
+            trustedHttpClient.execute(get), src, dst);
+        for (Option<File> ff : result.right()) {
           for (File f : ff) {
             return f;
           }
@@ -466,16 +506,13 @@ public final class WorkspaceImpl implements Workspace {
           throw new NotFoundException();
         }
         // left: file will be ready later
-        for (String token : a.left()) {
-          get = createGetRequest(src, dst, tuple("token", token));
+        for (String token : result.left()) {
+          get = createGetRequest(src, dst, Collections.singletonMap("token", token));
           sleep(60000);
         }
-      }
-      // left: an exception occurred
-      for (Exception e : result.left()) {
-        logger.warn(format("Could not copy %s to %s: %s", src.toString(), dst.getAbsolutePath(), e.getMessage()));
+      } catch (TrustedHttpClientException e) {
         FileUtils.deleteQuietly(dst);
-        throw new NotFoundException(e);
+        throw new NotFoundException(String.format("Could not copy %s to %s", src, dst.getAbsolutePath()), e);
       }
     }
   }
@@ -673,36 +710,8 @@ public final class WorkspaceImpl implements Workspace {
   }
 
   @Override
-  public URI getURI(String mediaPackageID, String mediaPackageElementID, String filename) {
-    return wfr.getURI(mediaPackageID, mediaPackageElementID, filename);
-  }
-
-  @Override
   public URI getCollectionURI(String collectionID, String fileName) {
     return wfr.getCollectionURI(collectionID, fileName);
-  }
-
-  @Override
-  public URI copyTo(URI collectionURI, String toMediaPackage, String toMediaPackageElement, String toFileName)
-          throws NotFoundException, IOException {
-    String path = collectionURI.toString();
-    String filename = FilenameUtils.getName(path);
-    String collection = getCollection(collectionURI);
-
-    // Copy the local file
-    final File original = toWorkspaceFile(collectionURI);
-    if (original.isFile()) {
-      URI copyURI = wfr.getURI(toMediaPackage, toMediaPackageElement, filename);
-      File copy = toWorkspaceFile(copyURI);
-      FileUtils.forceMkdir(copy.getParentFile());
-      FileSupport.link(original, copy);
-    }
-
-    // Tell working file repository
-    final URI wfrUri = wfr.copyTo(collection, filename, toMediaPackage, toMediaPackageElement, toFileName);
-    // wait for WFR
-    waitForResource(wfrUri, SC_OK, "File %s does not appear in WFR");
-    return wfrUri;
   }
 
   @Override
@@ -735,8 +744,7 @@ public final class WorkspaceImpl implements Workspace {
     return wfr.getCollectionContents(collectionId);
   }
 
-  @Override
-  public void deleteFromCollection(String collectionId, String fileName, boolean removeCollection) throws NotFoundException, IOException {
+  private void deleteFromCollection(String collectionId, String fileName, boolean removeCollection) throws NotFoundException, IOException {
     // local delete
     final File f = workspaceFile(WorkingFileRepository.COLLECTION_PATH_PREFIX, collectionId,
             PathSupport.toSafeName(fileName));
@@ -848,6 +856,7 @@ public final class WorkspaceImpl implements Workspace {
     return wfr.getBaseUri();
   }
 
+  @Reference(name = "REPO")
   public void setRepository(WorkingFileRepository repo) {
     this.wfr = repo;
     if (repo instanceof PathMappable) {
@@ -856,8 +865,14 @@ public final class WorkspaceImpl implements Workspace {
     }
   }
 
+  @Reference(name = "trustedHttpClient")
   public void setTrustedHttpClient(TrustedHttpClient trustedHttpClient) {
     this.trustedHttpClient = trustedHttpClient;
+  }
+
+  @Reference(name = "securityService")
+  public void setSecurityService(SecurityService securityService) {
+    this.securityService = securityService;
   }
 
   private static final long TIMEOUT = 2L * 60L * 1000L;

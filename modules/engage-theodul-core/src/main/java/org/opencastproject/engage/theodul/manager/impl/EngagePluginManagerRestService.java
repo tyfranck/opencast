@@ -47,7 +47,7 @@ import javax.ws.rs.core.Response;
             + "not working and is either restarting or has failed",
             "A status code 500 means a general failure has occurred which is not recoverable and was not anticipated. In "
             + "other words, there is a bug! You should file an error report with your server logs from the time when the "
-            + "error occurred: <a href=\"https://opencast.jira.com\">Opencast Issue Tracker</a>"})
+            + "error occurred: <a href=\"https://github.com/opencast/opencast/issues\">Opencast Issue Tracker</a>"})
 public class EngagePluginManagerRestService {
 
     private static final Logger log = LoggerFactory.getLogger(EngagePluginManagerRestService.class);
@@ -68,7 +68,7 @@ public class EngagePluginManagerRestService {
             pathParameters = {
                 @RestParameter(description = "The output format (json or xml) of the response body.", isRequired = true, name = "format", type = RestParameter.Type.STRING)
             },
-            reponses = {
+            responses = {
                 @RestResponse(description = "the list of plugins was successfully retrieved.", responseCode = HttpServletResponse.SC_OK),
                 @RestResponse(description = "something went wrong.", responseCode = HttpServletResponse.SC_INTERNAL_SERVER_ERROR)
             }, returnDescription = "The list of all registered plugins.")

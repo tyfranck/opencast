@@ -138,13 +138,12 @@ public class TestTasksEndpoint extends TasksEndpoint {
 
     this.setWorkflowService(workflowService);
     this.setAssetManager(assetManager);
-    this.setWorkspace(workspace);
     this.activate(null);
   }
 
   AssetManager mkAssetManager(final Workspace workspace) throws Exception {
     final PersistenceEnv penv = PersistenceEnvs.mk(mkEntityManagerFactory("org.opencastproject.assetmanager.impl"));
-    final Database db = new Database(penv);
+    final Database db = new Database(null, penv);
     return new AbstractAssetManager() {
       @Override
       public HttpAssetProvider getHttpAssetProvider() {

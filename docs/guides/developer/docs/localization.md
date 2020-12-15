@@ -94,9 +94,6 @@ Right after a cut of a new Opencast release branch `r/a.x` (from `develop`), the
 1. Download the translations from Crowdin branch `develop`
 2. Commit the downloaded translations into the Opencast branch `r/a.x`
     * Respect the rules described in the section [Inclusion and Exclusion of Translations](#inclusion-and-exclusion-of-translations)
-3. Upload translation sources of Opencast branch `r/a.x` to Crowdin branch `a.x`
-    * Crowdin will find duplicate strings (added in previous versions) and add the translations to these
-    * Only new strings will be shown to translators
 
 **Important:** Do not upload translations to Crowdin!
 
@@ -137,6 +134,15 @@ To show a list of files in the current project, use the following command:
     crowdin --config .crowdin.yaml list project -b <branch>
 
 Note: Do not upload translations to Crowdin. Our current subscription plan will exceeded otherwise.
+
+
+### To consider when adding a translation
+
+* Add a SVG with the flag under modules/admin-ui-frontend/app/img/lang/
+* Add a case to the switch-case in
+    * modules/engage-theodul-core/src/main/resources/ui/js/engage/core.js
+    * modules/engage-ui/src/main/resources/ui/js/app/engage-ui.js
+
 
 Further Information
 -------------------

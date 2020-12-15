@@ -34,7 +34,6 @@ import static com.entwinemedia.fn.parser.Parsers.token;
 import static com.entwinemedia.fn.parser.Parsers.yield;
 import static java.lang.String.format;
 import static org.opencastproject.util.EqualsUtil.eq;
-import static org.opencastproject.util.data.Tuple.tuple;
 
 import org.opencastproject.composer.api.ComposerService;
 import org.opencastproject.composer.api.EncodingProfile;
@@ -48,8 +47,8 @@ import org.opencastproject.mediapackage.MediaPackageElementFlavor;
 import org.opencastproject.mediapackage.MediaPackageElementParser;
 import org.opencastproject.mediapackage.MediaPackageException;
 import org.opencastproject.mediapackage.MediaPackageSupport;
-import org.opencastproject.mediapackage.MediaPackageSupport.Filters;
 import org.opencastproject.mediapackage.Track;
+import org.opencastproject.mediapackage.VideoStream;
 import org.opencastproject.mediapackage.selector.AbstractMediaPackageElementSelector;
 import org.opencastproject.mediapackage.selector.TrackSelector;
 import org.opencastproject.util.JobUtil;
@@ -83,10 +82,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URI;
+import java.util.Arrays;
 import java.util.IllegalFormatException;
 import java.util.List;
-import java.util.SortedMap;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * The workflow definition for handling "image" operations
@@ -108,22 +108,7 @@ public class ImageWorkflowOperationHandler extends AbstractWorkflowOperationHand
   public static final String OPT_END_MARGIN = "end-margin";
 
   private static final long END_MARGIN_DEFAULT = 100;
-
-  /** The configuration options for this handler */
-  @SuppressWarnings("unchecked")
-  private static final SortedMap<String, String> CONFIG_OPTIONS = Collections.smap(
-          tuple(OPT_SOURCE_FLAVOR, "The \"flavor\" of the track to use as a video source input"),
-          tuple(OPT_SOURCE_FLAVORS, "The \"flavors\" of the track to use as a video source input"),
-          tuple(OPT_SOURCE_TAGS,
-                "The required tags that must exist on the track for the track to be used as a video source"),
-          tuple(OPT_PROFILES, "The encoding profile to use"),
-          tuple(OPT_POSITIONS, "The number of seconds into the video file to extract the image"),
-          tuple(OPT_TARGET_FLAVOR, "The flavor to apply to the extracted image"),
-          tuple(OPT_TARGET_TAGS, "The tags to apply to the extracted image"),
-          tuple(OPT_TARGET_BASE_NAME_FORMAT_SECOND, "TODO"), // todo description
-          tuple(OPT_TARGET_BASE_NAME_FORMAT_PERCENT, "The target base name pattern for seconds 'thumbnail' or 'extracted'."), //todo description
-          tuple(OPT_END_MARGIN, "A margin in milliseconds at the end of the video. Each position is "
-                  + "limited to not exceed this bound. Defaults to " + END_MARGIN_DEFAULT + "ms."));
+  public static final double SINGLE_FRAME_POS = 0.0;
 
   /** The composer service */
   private ComposerService composerService = null;
@@ -150,11 +135,6 @@ public class ImageWorkflowOperationHandler extends AbstractWorkflowOperationHand
    */
   public void setWorkspace(Workspace workspace) {
     this.workspace = workspace;
-  }
-
-  @Override
-  public SortedMap<String, String> getConfigurationOptions() {
-    return CONFIG_OPTIONS;
   }
 
   @Override
@@ -194,7 +174,7 @@ public class ImageWorkflowOperationHandler extends AbstractWorkflowOperationHand
           if (p.size() != cfg.positions.size()) {
             logger.warn("Could not apply all configured positions to track " + t);
           } else {
-            logger.info(format("Extracting images from %s at position %s", t, $(p).mkString(", ")));
+            logger.info("Extracting images from {} at position {}", t, $(p).mkString(", "));
           }
           // create one extraction per encoding profile
           return $(cfg.profiles).map(new Fn<EncodingProfile, Extraction>() {
@@ -349,15 +329,20 @@ public class ImageWorkflowOperationHandler extends AbstractWorkflowOperationHand
 
   /** Limit the list of media positions to those that fit into the length of the track. */
   static List<MediaPosition> limit(Track track, List<MediaPosition> positions) {
-    final long duration = track.getDuration();
-    return $(positions).filter(new Fn<MediaPosition, Boolean>() {
-      @Override public Boolean apply(MediaPosition p) {
-        return !(
-                (eq(p.type, PositionType.Seconds) && (p.position >= duration || p.position < 0.0))
-                        ||
-                        (eq(p.type, PositionType.Percentage) && (p.position < 0.0 || p.position > 100.0)));
-      }
-    }).toList();
+    final Long duration = track.getDuration();
+    // if the video has just one frame (e.g.: MP3-Podcasts) it makes no sense to go to a certain position
+    // as the video has only one image at position 0
+    if (duration == null || (track.getStreams() != null && Arrays.stream(track.getStreams())
+            .filter(stream -> stream instanceof VideoStream)
+            .map(org.opencastproject.mediapackage.Stream::getFrameCount)
+            .allMatch(frameCount -> frameCount == null || frameCount == 1))) {
+      return java.util.Collections.singletonList(new MediaPosition(PositionType.Seconds, 0));
+    }
+
+    return positions.stream()
+        .filter(p -> (PositionType.Seconds.equals(p.type) && p.position >= 0 && p.position < duration)
+                || (PositionType.Percentage.equals(p.type) && p.position >= 0 && p.position <= 100))
+        .collect(Collectors.toList());
   }
 
   /**
@@ -366,7 +351,7 @@ public class ImageWorkflowOperationHandler extends AbstractWorkflowOperationHand
    * the bounds of the tracks length.
    */
   static double toSeconds(Track track, MediaPosition position, double endMarginMs) {
-    final long durationMs = track.getDuration();
+    final long durationMs = track.getDuration() == null ? 0 : track.getDuration();
     final double posMs;
     switch (position.type) {
       case Percentage:
@@ -499,15 +484,9 @@ public class ImageWorkflowOperationHandler extends AbstractWorkflowOperationHand
       // fold both into a selector
       final TrackSelector trackSelector = sourceTags.apply(tagFold(sourceFlavors.apply(flavorFold(new TrackSelector()))));
       // select the tracks based on source flavors and tags and skip those that don't have video
-      sourceTracks = $(trackSelector.select(mp, true))
-              .filter(Filters.hasVideo.toFn())
-              .each(new Fx<Track>() {
-                @Override public void apply(Track track) {
-                  if (track.getDuration() == null) {
-                    chuck(new WorkflowOperationException(format("Track %s cannot tell its duration", track)));
-                  }
-                }
-              }).toList();
+      sourceTracks = trackSelector.select(mp, true).stream()
+          .filter(Track::hasVideo)
+          .collect(Collectors.toList());
     }
     final List<MediaPosition> positions = parsePositions(getConfig(woi, OPT_POSITIONS));
     final long endMargin = getOptConfig(woi, OPT_END_MARGIN).bind(Strings.toLong).getOr(END_MARGIN_DEFAULT);
@@ -604,12 +583,16 @@ public class ImageWorkflowOperationHandler extends AbstractWorkflowOperationHand
    * A position in time in a media file.
    */
   static final class MediaPosition {
-    private final double position;
+    private double position;
     private final PositionType type;
 
     MediaPosition(PositionType type, double position) {
       this.position = position;
       this.type = type;
+    }
+
+    public void setPosition(double position) {
+      this.position = position;
     }
 
     @Override public int hashCode() {

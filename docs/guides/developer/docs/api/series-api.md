@@ -6,7 +6,7 @@
 
 Returns a list of series.
 
-The following query string parameters are supported to filter, sort and pagingate the returned list:
+The following query string parameters are supported to filter, sort and paginate the returned list:
 
 Query String Parameter |Type                         | Description
 :----------------------|:----------------------------|:-----------
@@ -30,7 +30,7 @@ Filter Name    | Description
 `textFilter`   | Filters series where any part of the series' metadata fields match this value
 `title`        | By the title of the series
 `identifier`   | By the technical identifiers of the series. Can occur multiple times (version 1.1.0 and higher)
-`desription`   | By the description of the series (version 1.1.0 and higher)
+`description`  | By the description of the series (version 1.1.0 and higher)
 `creator`      | Series where the creator specified in the metadata field match (version 1.1.0 and higher)
 `publishers`   | Series where the publishers specified in the metadata field match. Can occur multiple times (version 1.1.0 and higher)
 `rightsholder` | By the rights holder of the series (version 1.1.0 and higher)
@@ -43,6 +43,13 @@ Sort Criteria  | Description
 `created`      | By when the series was created
 `creator`      | By who created the series
 `title`        | By the title of the series
+
+This request additionally supports the following query string parameters to include additional information directly in
+the response:
+
+Query String Parameter     |Type                         | Description
+:--------------------------|:----------------------------|:-----------
+`withacl`                  | [`boolean`](types.md#basic) | Whether the acl should be included in the response (version 1.5.0 and higher)
 
 __Sample request__
 ```xml
@@ -121,6 +128,10 @@ __Example__
 ### GET /api/series/{series_id}
 
 Returns a single series.
+
+Query String Parameter     |Type                         | Description
+:--------------------------|:----------------------------|:-----------
+`withacl`                  | [`boolean`](types.md#basic) | Whether the acl should be included in the response (version 1.5.0 and higher)
 
 __Response__
 
@@ -461,11 +472,12 @@ __Example__
 
 Updates a series' access policy.
 
-Parameters | Required | Type                  | Description
-:----------|:---------|:----------------------|:-----------
-`acl`      | yes      | [`acl`](types.md#acl) | Access policy to be applied
+Parameters | Required | Type                        | Description                 | Default | Version
+:----------|:---------|:----------------------------|:----------------------------|:--------|:-------
+`acl`      | yes      | [`acl`](types.md#acl)       | Access policy to be applied |         |
+`override` | no       | [`boolean`](types.md#basic) | Whether the episode ACL of all events of this series should be removed | false | 1.2.0
 
-Note that the existing access policy will be overwritten.
+Note that the existing access policy of the series will be overwritten.
 
 __Response__
 

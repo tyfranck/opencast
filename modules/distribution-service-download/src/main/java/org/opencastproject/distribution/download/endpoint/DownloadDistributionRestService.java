@@ -73,7 +73,7 @@ import javax.ws.rs.core.Response.Status;
         + "not working and is either restarting or has failed",
         "A status code 500 means a general failure has occurred which is not recoverable and was not anticipated. In "
         + "other words, there is a bug! You should file an error report with your server logs from the time when the "
-        + "error occurred: <a href=\"https://opencast.jira.com\">Opencast Issue Tracker</a>" })
+        + "error occurred: <a href=\"https://github.com/opencast/opencast/issues\">Opencast Issue Tracker</a>" })
 public class DownloadDistributionRestService extends AbstractJobProducerEndpoint {
 
   /** The logger */
@@ -131,7 +131,7 @@ public class DownloadDistributionRestService extends AbstractJobProducerEndpoint
                                     isRequired = true,
                                     description = "The element to distribute. The Id or multiple Ids as JSON Array ( ['IdOne','IdTwo'] )",
                                     type = Type.STRING) },
-             reponses = {
+             responses = {
                      @RestResponse(responseCode = SC_OK,
                                    description = "An XML representation of the distribution job") })
   public Response distribute(@FormParam("mediapackage") String mediaPackageXml,
@@ -174,7 +174,7 @@ public class DownloadDistributionRestService extends AbstractJobProducerEndpoint
               isRequired = true,
               description = "The element to distribute. The Id or multiple Ids as JSON Array ( ['IdOne','IdTwo'] )",
               type = Type.STRING) },
-      reponses = {
+      responses = {
           @RestResponse(responseCode = SC_OK,
               description = "An XML representation of the distribution") })
   public Response distributeSync(@FormParam("mediapackage") String mediaPackageXml,
@@ -215,7 +215,7 @@ public class DownloadDistributionRestService extends AbstractJobProducerEndpoint
                                     isRequired = true,
                                     description = "The element to retract. The Id or multiple Ids as JSON Array ( ['IdOne','IdTwo'] )",
                                     type = Type.STRING) },
-             reponses = {
+             responses = {
                      @RestResponse(responseCode = SC_OK,
                                    description = "An XML representation of the retraction job") })
   public Response retract(@FormParam("mediapackage") String mediaPackageXml,
@@ -254,7 +254,7 @@ public class DownloadDistributionRestService extends AbstractJobProducerEndpoint
               isRequired = true,
               description = "The element to retract. The Id or multiple Ids as JSON Array ( ['IdOne','IdTwo'] )",
               type = Type.STRING) },
-      reponses = {
+      responses = {
           @RestResponse(responseCode = SC_OK,
               description = "An XML representation of the retraction") })
   public Response retractSync(@FormParam("mediapackage") String mediaPackageXml,

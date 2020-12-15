@@ -65,7 +65,7 @@ import javax.ws.rs.core.Response.Status;
             + "not working and is either restarting or has failed",
         "A status code 500 means a general failure has occurred which is not recoverable and was not anticipated. In "
             + "other words, there is a bug! You should file an error report with your server logs from the time when the "
-            + "error occurred: <a href=\"https://opencast.jira.com\">Opencast Issue Tracker</a>" })
+            + "error occurred: <a href=\"https://github.com/opencast/opencast/issues\">Opencast Issue Tracker</a>" })
 public class YouTubePublicationRestService extends AbstractJobProducerEndpoint {
 
   private final Logger logger = LoggerFactory.getLogger(YouTubePublicationRestService.class);
@@ -83,7 +83,7 @@ public class YouTubePublicationRestService extends AbstractJobProducerEndpoint {
       restParameters = {
           @RestParameter(name = "mediapackage", isRequired = true, description = "The mediapackage", type = Type.TEXT),
           @RestParameter(name = "elementId", isRequired = true, description = "The element to publish", type = Type.STRING) },
-      reponses = {
+      responses = {
           @RestResponse(responseCode = SC_OK, description = "An XML representation of the publication job"),
           @RestResponse(responseCode = SC_BAD_REQUEST, description = "elementId does not reference a track") })
   public Response publish(@FormParam("mediapackage") final String mediaPackageXml, @FormParam("elementId") final String elementId) {
@@ -111,7 +111,7 @@ public class YouTubePublicationRestService extends AbstractJobProducerEndpoint {
       returnDescription = "The job that can be used to track the retraction",
       restParameters = {
           @RestParameter(name = "mediapackage", isRequired = true, description = "The mediapackage", type = Type.TEXT) },
-      reponses = {
+      responses = {
           @RestResponse(responseCode = SC_OK, description = "An XML representation of the retraction job") })
   public Response retract(@FormParam("mediapackage") final String mediaPackageXml) {
     final Job job;

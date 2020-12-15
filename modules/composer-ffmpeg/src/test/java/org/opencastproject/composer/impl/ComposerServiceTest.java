@@ -25,10 +25,12 @@ import static org.easymock.EasyMock.capture;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import org.opencastproject.composer.api.EncoderException;
 import org.opencastproject.composer.api.EncodingProfile;
 import org.opencastproject.composer.api.LaidOutElement;
+import org.opencastproject.composer.layout.AbsolutePositionLayoutSpec;
 import org.opencastproject.composer.layout.Dimension;
 import org.opencastproject.composer.layout.HorizontalCoverageLayoutSpec;
 import org.opencastproject.composer.layout.LayoutManager;
@@ -71,12 +73,18 @@ import org.osgi.service.component.ComponentContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.awt.image.BufferedImage;
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileReader;
 import java.net.URI;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.stream.Stream;
+
+import javax.imageio.ImageIO;
 
 /**
  * Tests the {@link ComposerServiceImpl}.
@@ -86,6 +94,7 @@ public class ComposerServiceTest {
   private File sourceVideoOnly = null;
   private File sourceAudioOnly = null;
   private File sourceImage = null;
+  private File sourceAVTS = null;
 
   /** The composer service to test */
   private ComposerServiceImpl composerService = null;
@@ -103,7 +112,9 @@ public class ComposerServiceTest {
   private static final Logger logger = LoggerFactory.getLogger(ComposerServiceTest.class);
   private Track sourceVideoTrack;
   private Track sourceAudioTrack;
+  private Track sourceAVTSTrack; // Test that this ffmpeg works with TS files
   private Track inspectedTrack;
+  private Attachment watermarkImageAttachment;
 
   /** Encoding profile scanner */
   private EncodingProfileScanner profileScanner;
@@ -133,6 +144,10 @@ public class ComposerServiceTest {
     File f = getFile("/video.mp4");
     sourceVideoOnly = File.createTempFile(FilenameUtils.getBaseName(f.getName()), ".mp4", testDir);
     FileUtils.copyFile(f, sourceVideoOnly);
+
+    f = getFile("/avts.mts");
+    sourceAVTS = File.createTempFile(FilenameUtils.getBaseName(f.getName()), ".mts", testDir);
+    FileUtils.copyFile(f, sourceAVTS);
 
     // Create another audio only file
     f = getFile("/audio.mp3");
@@ -167,6 +182,14 @@ public class ComposerServiceTest {
 
     Workspace workspace = EasyMock.createNiceMock(Workspace.class);
     EasyMock.expect(workspace.get(EasyMock.anyObject())).andReturn(sourceVideoOnly).anyTimes();
+    EasyMock.expect(workspace.get(EasyMock.anyObject(), EasyMock.eq(false))).andReturn(sourceVideoOnly).anyTimes();
+
+    EasyMock.expect(workspace.get(EasyMock.anyObject(), EasyMock.eq(true))).andAnswer(() -> {
+      File f1 = getFile("/video.mp4");
+      File uniqueSourceVideo = File.createTempFile(FilenameUtils.getBaseName(f1.getName()), ".mp4", testDir);
+      FileUtils.copyFile(f1, uniqueSourceVideo);
+      return uniqueSourceVideo;
+    }).anyTimes();
 
     profileScanner = new EncodingProfileScanner();
     File encodingProfile = getFile("/encodingprofiles.properties");
@@ -184,6 +207,11 @@ public class ComposerServiceTest {
             ComposerServiceTest.class.getResourceAsStream("/composer_test_source_track_video.xml"), Charset.defaultCharset()));
     sourceAudioTrack = (Track) MediaPackageElementParser.getFromXml(IOUtils.toString(
             ComposerServiceTest.class.getResourceAsStream("/composer_test_source_track_audio.xml"), Charset.defaultCharset()));
+    watermarkImageAttachment = (Attachment) MediaPackageElementParser.getFromXml(IOUtils.toString(
+            ComposerServiceTest.class.getResourceAsStream("/composer_test_watermark_attachment.xml"), Charset.defaultCharset()));
+    sourceAVTSTrack = (Track) MediaPackageElementParser.getFromXml(IOUtils.toString(
+            ComposerServiceTest.class.getResourceAsStream("/composer_test_source_track_transport_stream.xml"),
+            Charset.defaultCharset()));
 
     // Create and populate the composer service
     composerService = new ComposerServiceImpl() {
@@ -240,7 +268,7 @@ public class ComposerServiceTest {
 
     // Need different media files
     Workspace workspace = EasyMock.createNiceMock(Workspace.class);
-    EasyMock.expect(workspace.get(EasyMock.anyObject())).andReturn(sourceVideoOnly).anyTimes();
+    EasyMock.expect(workspace.get(EasyMock.anyObject(), EasyMock.anyBoolean())).andReturn(sourceVideoOnly).anyTimes();
     EasyMock.expect(workspace.putInCollection(EasyMock.anyString(), EasyMock.anyString(), EasyMock.anyObject()))
             .andReturn(sourceVideoOnly.toURI()).anyTimes();
     composerService.setWorkspace(workspace);
@@ -256,7 +284,7 @@ public class ComposerServiceTest {
 
     // Need different media files
     Workspace workspace = EasyMock.createNiceMock(Workspace.class);
-    EasyMock.expect(workspace.get(EasyMock.anyObject())).andReturn(sourceVideoOnly).anyTimes();
+    EasyMock.expect(workspace.get(EasyMock.anyObject(), EasyMock.anyBoolean())).andReturn(sourceVideoOnly).anyTimes();
     EasyMock.expect(workspace.putInCollection(EasyMock.anyString(), EasyMock.anyString(), EasyMock.anyObject()))
             .andReturn(sourceVideoOnly.toURI()).anyTimes();
     composerService.setWorkspace(workspace);
@@ -273,7 +301,7 @@ public class ComposerServiceTest {
 
     // Need different media files
     Workspace workspace = EasyMock.createNiceMock(Workspace.class);
-    EasyMock.expect(workspace.get(EasyMock.anyObject())).andReturn(sourceVideoOnly).anyTimes();
+    EasyMock.expect(workspace.get(EasyMock.anyObject(), EasyMock.anyBoolean())).andReturn(sourceVideoOnly).anyTimes();
     EasyMock.expect(workspace.putInCollection(EasyMock.anyString(), EasyMock.anyString(), EasyMock.anyObject()))
             .andReturn(sourceVideoOnly.toURI()).anyTimes();
     composerService.setWorkspace(workspace);
@@ -290,8 +318,8 @@ public class ComposerServiceTest {
 
     // Need different media files
     Workspace workspace = EasyMock.createNiceMock(Workspace.class);
-    EasyMock.expect(workspace.get(EasyMock.anyObject())).andReturn(sourceVideoOnly).once();
-    EasyMock.expect(workspace.get(EasyMock.anyObject())).andReturn(sourceAudioOnly).once();
+    EasyMock.expect(workspace.get(EasyMock.anyObject(), EasyMock.anyBoolean())).andReturn(sourceVideoOnly).once();
+    EasyMock.expect(workspace.get(EasyMock.anyObject(), EasyMock.anyBoolean())).andReturn(sourceAudioOnly).once();
     EasyMock.expect(workspace.putInCollection(EasyMock.anyString(), EasyMock.anyString(), EasyMock.anyObject()))
             .andReturn(sourceVideoOnly.toURI()).anyTimes();
     composerService.setWorkspace(workspace);
@@ -353,12 +381,144 @@ public class ComposerServiceTest {
             .get(1));
 
     Job composite = composerService.composite(outputDimension, Option.option(lowerLaidOutElement), upperLaidOutElement,
-            watermarkOption, "composite.work", "black");
+            watermarkOption, "composite.work", "black", "both");
+            //  null or "both" means that both tracks are checked for audio and both audio tracks
+            // are mixed into the final composite if they exist
+
     Track compositeTrack = (Track) MediaPackageElementParser.getFromXml(composite.getPayload());
     Assert.assertNotNull(compositeTrack);
     inspectedTrack.setIdentifier(compositeTrack.getIdentifier());
     inspectedTrack.setMimeType(MimeType.mimeType("video", "mp4"));
     Assert.assertEquals(inspectedTrack, compositeTrack);
+  }
+
+  /**
+   * Test method for {@link ComposerServiceImpl#concat(String, Dimension, float, Track...)}
+   */
+  @Test
+  public void testConcatTransportStream() throws Exception {
+    // Some versions of ffmpeg crashes
+    Job concat = composerService.concat("concat.work", null, true, sourceAVTSTrack, sourceAVTSTrack);
+    Track concatTrack = (Track) MediaPackageElementParser.getFromXml(concat.getPayload());
+    Assert.assertNotNull(concatTrack);
+    inspectedTrack.setIdentifier(concatTrack.getIdentifier());
+    inspectedTrack.setMimeType(MimeType.mimeType("video", "mp4"));
+    Assert.assertEquals(inspectedTrack, concatTrack);
+  }
+
+  @Test
+  public void testCompositeAudio() throws Exception {
+    if (!ffmpegInstalled)
+      return;
+
+    Dimension outputDimension = new Dimension(500, 500);
+
+    List<HorizontalCoverageLayoutSpec> layouts = new ArrayList<HorizontalCoverageLayoutSpec>();
+    layouts.add(Serializer.horizontalCoverageLayoutSpec(JsonObj
+            .jsonObj("{\"horizontalCoverage\":1.0,\"anchorOffset\":{\"referring\":{\"left\":1.0,\"top\":1.0},\"offset\":{\"y\":-20,\"x\":-20},\"reference\":{\"left\":1.0,\"top\":1.0}}}")));
+    layouts.add(Serializer.horizontalCoverageLayoutSpec(JsonObj
+            .jsonObj("{\"horizontalCoverage\":0.2,\"anchorOffset\":{\"referring\":{\"left\":0.0,\"top\":0.0},\"offset\":{\"y\":-20,\"x\":-20},\"reference\":{\"left\":0.0,\"top\":0.0}}}")));
+    layouts.add(Serializer.horizontalCoverageLayoutSpec(JsonObj
+            .jsonObj("{\"horizontalCoverage\":1.0,\"anchorOffset\":{\"referring\":{\"left\":1.0,\"top\":0.0},\"offset\":{\"y\":20,\"x\":20},\"reference\":{\"left\":1.0,\"top\":0.0}}}")));
+
+    List<Tuple<Dimension, HorizontalCoverageLayoutSpec>> shapes = new ArrayList<>();
+    shapes.add(0, Tuple.tuple(new Dimension(300, 300), layouts.get(0)));
+    shapes.add(1, Tuple.tuple(new Dimension(200, 200), layouts.get(1)));
+
+    MultiShapeLayout multiShapeLayout = LayoutManager.multiShapeLayout(outputDimension, shapes);
+
+    Option<LaidOutElement<Attachment>> watermarkOption = Option.<LaidOutElement<Attachment>> none();
+    LaidOutElement<Track> lowerLaidOutElement = new LaidOutElement<Track>(sourceVideoTrack, multiShapeLayout.getShapes()
+            .get(0));
+    LaidOutElement<Track> upperLaidOutElement = new LaidOutElement<Track>(sourceVideoTrack, multiShapeLayout.getShapes()
+            .get(1));
+
+    Job composite = composerService.composite(outputDimension, Option.option(lowerLaidOutElement), upperLaidOutElement,
+            watermarkOption, "composite.work", "black", "upper");
+    Track compositeTrack = (Track) MediaPackageElementParser.getFromXml(composite.getPayload());
+    Assert.assertNotNull(compositeTrack);
+    inspectedTrack.setIdentifier(compositeTrack.getIdentifier());
+    inspectedTrack.setMimeType(MimeType.mimeType("video", "mp4"));
+    Assert.assertEquals(inspectedTrack, compositeTrack);
+  }
+
+  @Test
+  public void testCompositeAudioAndWatermark() throws Exception {
+    if (!ffmpegInstalled)
+      return;
+
+    Dimension outputDimension = new Dimension(500, 500);
+
+    List<HorizontalCoverageLayoutSpec> layouts = new ArrayList<HorizontalCoverageLayoutSpec>();
+    layouts.add(Serializer.horizontalCoverageLayoutSpec(JsonObj
+            .jsonObj("{\"horizontalCoverage\":1.0,\"anchorOffset\":{\"referring\":{\"left\":1.0,\"top\":1.0},\"offset\":{\"y\":-20,\"x\":-20},\"reference\":{\"left\":1.0,\"top\":1.0}}}")));
+    layouts.add(Serializer.horizontalCoverageLayoutSpec(JsonObj
+            .jsonObj("{\"horizontalCoverage\":0.2,\"anchorOffset\":{\"referring\":{\"left\":0.0,\"top\":0.0},\"offset\":{\"y\":-20,\"x\":-20},\"reference\":{\"left\":0.0,\"top\":0.0}}}")));
+    layouts.add(Serializer.horizontalCoverageLayoutSpec(JsonObj
+            .jsonObj("{\"horizontalCoverage\":1.0,\"anchorOffset\":{\"referring\":{\"left\":1.0,\"top\":0.0},\"offset\":{\"y\":20,\"x\":20},\"reference\":{\"left\":1.0,\"top\":0.0}}}")));
+
+    List<Tuple<Dimension, HorizontalCoverageLayoutSpec>> shapes = new ArrayList<>();
+    shapes.add(0, Tuple.tuple(new Dimension(300, 300), layouts.get(0)));
+    shapes.add(1, Tuple.tuple(new Dimension(200, 200), layouts.get(1)));
+
+    MultiShapeLayout multiShapeLayout = LayoutManager.multiShapeLayout(outputDimension, shapes);
+
+    //Setting this to null to bypass complaints about image possibly not being initialized...
+    BufferedImage image = null;
+    try {
+      image = ImageIO.read(sourceImage);
+    } catch (Exception e) {
+      fail("Unable to read the watermark image attachment");
+    }
+    Dimension imageDimension = Dimension.dimension(image.getWidth(), image.getHeight());
+    List<Tuple<Dimension, AbsolutePositionLayoutSpec>> watermarkShapes = new ArrayList<Tuple<Dimension, AbsolutePositionLayoutSpec>>();
+    AbsolutePositionLayoutSpec layout = Serializer.absolutePositionLayoutSpec((JsonObj
+            .jsonObj("{\"horizontalCoverage\":0.1,\"anchorOffset\":{\"referring\":{\"left\":0.0,\"top\":0.0},\"offset\":{\"y\":0,\"x\":0},\"reference\":{\"left\":0.010,\"top\":0.01}}}")));
+    watermarkShapes.add(0, Tuple.tuple(imageDimension, layout));
+    MultiShapeLayout watermarkLayout = LayoutManager.absoluteMultiShapeLayout(outputDimension,
+            watermarkShapes);
+    Option<LaidOutElement<Attachment>> watermarkOption = Option.some(new LaidOutElement<Attachment>(watermarkImageAttachment, watermarkLayout
+            .getShapes().get(0)));
+
+    LaidOutElement<Track> lowerLaidOutElement = new LaidOutElement<Track>(sourceVideoTrack, multiShapeLayout.getShapes()
+            .get(0));
+    LaidOutElement<Track> upperLaidOutElement = new LaidOutElement<Track>(sourceVideoTrack, multiShapeLayout.getShapes()
+            .get(1));
+
+    Job composite = composerService.composite(outputDimension, Option.option(lowerLaidOutElement), upperLaidOutElement,
+            watermarkOption, "composite.work", "black", "upper");
+    Track compositeTrack = (Track) MediaPackageElementParser.getFromXml(composite.getPayload());
+    Assert.assertNotNull(compositeTrack);
+    inspectedTrack.setIdentifier(compositeTrack.getIdentifier());
+    inspectedTrack.setMimeType(MimeType.mimeType("video", "mp4"));
+    Assert.assertEquals(inspectedTrack, compositeTrack);
+  }
+
+  @Test
+  public void testRemapNames() throws Exception {
+    long jobId = 1234567;
+    final String[] outFiles = { "/master.m3u8", "/variant_0.m3u8", "/variant_1.m3u8", "/segment_0.mp4",
+    "/segment_1.mp4" };
+    List<File> testFiles = new ArrayList<File>();
+    for (String of : outFiles) {
+      File testFile = getFile(of);
+      File f = new File(FilenameUtils.concat(testDir.getAbsolutePath(), testFile.getName()));
+      FileUtils.copyFile(testFile, f);
+      testFiles.add(f);
+    }
+    composerService.hlsFixReference(jobId, testFiles);
+    for (int i = 0; i < 3; i++) {
+      BufferedReader bufferedReader = new BufferedReader(new FileReader(testFiles.get(i)));
+      Stream<String> stream = bufferedReader.lines();
+      stream.filter(line -> !line.startsWith("#") && !line.trim().isEmpty()).forEach(line -> {
+        Assert.assertTrue(line.startsWith("1234567"));
+      });
+      stream = bufferedReader.lines();
+      stream.filter(line -> line.startsWith("#EXT-X-MAP:URI=")).forEach(line -> {
+        Assert.assertTrue(line.startsWith("#EXT-X-MAP:URI=1234567_"));
+      });
+      bufferedReader.close();
+    }
   }
 
   /**

@@ -47,6 +47,7 @@ import com.entwinemedia.fn.Fn;
 import com.entwinemedia.fn.Stream;
 import com.entwinemedia.fn.data.Opt;
 import com.mysema.query.jpa.impl.JPAQueryFactory;
+import com.mysema.query.support.Expressions;
 import com.mysema.query.types.expr.BooleanExpression;
 
 import java.util.Date;
@@ -212,22 +213,6 @@ public final class AQueryBuilderImpl implements AQueryBuilder, EntityPaths {
     };
   }
 
-  @Override public Field<Availability> availability() {
-    return new AbstractSnapshotField<Availability, String>(Q_SNAPSHOT.availability) {
-      @Override protected String extract(Availability availability) {
-        return availability.name();
-      }
-    };
-  }
-
-  @Override public Field<String> storage() {
-    return new AbstractSnapshotField<String, String>(Q_SNAPSHOT.storageId) {
-      @Override protected String extract(String storageId) {
-        return storageId;
-      }
-    };
-  }
-
   /* -- */
 
   // TODO DRY with #hasProperties
@@ -313,23 +298,16 @@ public final class AQueryBuilderImpl implements AQueryBuilder, EntityPaths {
     };
   }
 
-  @Override public Field zero() {
-    // TODO implement zero element of fields
-    throw new UnsupportedOperationException();
-  }
-
   @Override public Predicate always() {
     return new AbstractPredicate() {
       /* SELECT */
       @Override public SelectQueryContribution contributeSelect(JPAQueryFactory f) {
-        // could not find a boolean expression being constantly true, so use this as a workaround
-        return SelectQueryContribution.mk().where(Q_SNAPSHOT.eq(Q_SNAPSHOT));
+        return SelectQueryContribution.mk().where(Expressions.booleanTemplate("true = true"));
       }
 
       /* DELETE */
       @Override public DeleteQueryContribution contributeDelete(String owner) {
-        // could not find a boolean expression being constantly true, so use this as a workaround
-        return DeleteQueryContribution.mk().where(Q_SNAPSHOT.eq(Q_SNAPSHOT));
+        return DeleteQueryContribution.mk().where(Expressions.booleanTemplate("true = true"));
       }
     };
   }

@@ -30,6 +30,7 @@ import org.opencastproject.inspection.ffmpeg.api.MediaAnalyzer;
 import org.opencastproject.inspection.ffmpeg.api.MediaAnalyzerException;
 import org.opencastproject.inspection.ffmpeg.api.MediaContainerMetadata;
 import org.opencastproject.inspection.ffmpeg.api.VideoStreamMetadata;
+import org.opencastproject.mediapackage.AdaptivePlaylist;
 import org.opencastproject.mediapackage.MediaPackageElement;
 import org.opencastproject.mediapackage.MediaPackageElementBuilder;
 import org.opencastproject.mediapackage.MediaPackageElementBuilderFactory;
@@ -135,15 +136,8 @@ public class MediaInspector {
         }
 
         // Mimetype
-        MimeType mimeType = MimeTypes.fromURL(file.toURI().toURL());
-
-        // The mimetype library doesn't know about audio/video metadata, so the type might be wrong.
-        if ("audio".equals(mimeType.getType()) && metadata.hasVideoStreamMetadata()) {
-          mimeType = MimeTypes.parseMimeType("video/" + mimeType.getSubtype());
-        } else if ("video".equals(mimeType.getType()) && !metadata.hasVideoStreamMetadata()) {
-          mimeType = MimeTypes.parseMimeType("audio/" + mimeType.getSubtype());
-        }
-        track.setMimeType(mimeType);
+        track.setMimeType(metadata.getMimeType());
+        track.setMaster(metadata.getAdaptiveMaster());
 
         // Audio metadata
         try {
@@ -245,6 +239,11 @@ public class MediaInspector {
         track.setElementDescription(originalTrack.getElementDescription());
         track.setFlavor(flavor);
         track.setIdentifier(originalTrack.getIdentifier());
+        // If HLS
+        if (!originalTrack.hasMaster() || override)
+          track.setMaster(metadata.getAdaptiveMaster());
+        else
+          track.setMaster(originalTrack.isMaster());
         track.setMimeType(originalTrack.getMimeType());
         track.setReference(originalTrack.getReference());
         track.setSize(file.length());
@@ -266,19 +265,7 @@ public class MediaInspector {
 
         // Add the mime type if it's not already present
         if (track.getMimeType() == null || override) {
-          try {
-            MimeType mimeType = MimeTypes.fromURI(track.getURI());
-
-            // The mimetype library doesn't know about audio/video metadata, so the type might be wrong.
-            if ("audio".equals(mimeType.getType()) && metadata.hasVideoStreamMetadata()) {
-              mimeType = MimeTypes.parseMimeType("video/" + mimeType.getSubtype());
-            } else if ("video".equals(mimeType.getType()) && !metadata.hasVideoStreamMetadata()) {
-              mimeType = MimeTypes.parseMimeType("audio/" + mimeType.getSubtype());
-            }
-            track.setMimeType(mimeType);
-          } catch (UnknownFileTypeException e) {
-            logger.info("Unable to detect the mimetype for track {} at {}", track.getIdentifier(), track.getURI());
-          }
+            track.setMimeType(metadata.getMimeType());
         }
 
         // find all streams
@@ -350,7 +337,7 @@ public class MediaInspector {
       // Mimetype
       if (element.getMimeType() == null || override) {
         try {
-          element.setMimeType(MimeTypes.fromURI(file.toURI()));
+          element.setMimeType(MimeTypes.fromString(file.getPath()));
         } catch (UnknownFileTypeException e) {
           logger.info("unable to determine the mime type for {}", file.getName());
         }
@@ -384,7 +371,34 @@ public class MediaInspector {
     try {
       MediaAnalyzer analyzer = new FFmpegAnalyzer(accurateFrameCount);
       analyzer.setConfig(map(Tuple.<String, Object> tuple(FFmpegAnalyzer.FFPROBE_BINARY_CONFIG, ffprobePath)));
-      return analyzer.analyze(file);
+
+      MediaContainerMetadata metadata = analyzer.analyze(file);
+      // - setting mimetype for all media
+      try {
+        // Add mimeType - important for some browsers, eg: safari
+        MimeType mimeType = MimeTypes.fromString(file.getName());
+        // TODO: DO we need this
+        // The mimetype library doesn't know about audio/video metadata, so the type might be wrong.
+        if ("audio".equals(mimeType.getType()) && metadata.hasVideoStreamMetadata()) {
+          mimeType = MimeTypes.parseMimeType("video/" + mimeType.getSubtype());
+        } else if ("video".equals(mimeType.getType()) && !metadata.hasVideoStreamMetadata()) {
+          mimeType = MimeTypes.parseMimeType("audio/" + mimeType.getSubtype());
+        }
+        metadata.setMimeType(mimeType);
+      } catch (UnknownFileTypeException e) {
+        logger.error("parsing mimeType failed for {} : {}", file, e.getMessage());
+        throw new MediaAnalyzerException("parsing mimetype failed for file" + file);
+      }
+      // - setting adaptive play list master
+      // ffmpeg will show format_name == hls
+      // but does not distinguish variant playlist from master
+      try { // parse text only for correct file extensions
+        metadata.setAdaptiveMaster(AdaptivePlaylist.checkForMaster(file));
+      } catch (IOException e) {
+        logger.error("parsing adaptive playlist failed for {} : {}", file, e.getMessage());
+        throw new MediaAnalyzerException("parsing for adaptive playlist master failed for file" + file);
+      }
+      return metadata;
     } catch (MediaAnalyzerException e) {
       throw new MediaInspectionException(e);
     }

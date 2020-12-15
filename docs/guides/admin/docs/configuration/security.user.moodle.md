@@ -5,7 +5,7 @@ set of roles made up of the user's membership in Moodle courses, of the form
 COURSEID_Role. For example, an Opencast user who is also a Moodle user and a
 member of the Moodle course `myCourseID` with the Moodle capability
 `tool/opencast:learner` will be granted the Opencast role `myCourseID_Learner`.
-Analogously, users with the capability `tool/opencast:instructor` will recieve
+Analogously, users with the capability `tool/opencast:instructor` will receive
 the Opencast role `myCourseID_Instructor`. Note that by default, Moodle course
 IDs are opaque ID values such as `10765`. The `ROLE_GROUP_MOODLE` Opencast group
 role is granted to all users that also exist in Moodle.
@@ -38,6 +38,11 @@ service" service.
 
 ### Step 1
 
+Edit `etc/org.apache.karaf.features.cfg` and make sure the `opencast-moodle` feature is listed in the `featuresBoot`
+option.
+
+### Step 2
+
 To enable the Moodle User Provider, copy and rename the bundled configuration
 template from
 `OPENCAST/etc/org.opencastproject.userdirectory.moodle-default.cfg.template` to
@@ -52,7 +57,7 @@ org.opencastproject.userdirectory.moodle.url=http://localhost/webservice/rest/se
 org.opencastproject.userdirectory.moodle.token=mytoken1234abcdef
 ```
 
-### Step 2
+### Step 3
 
 Verify that the Moodle User Provider starts up with the correct Moodle URL by looking
 for a log entry like this:
@@ -62,7 +67,7 @@ for a log entry like this:
 ```
 
 Then login to Opencast using a username which also exists in your Moodle system.
-Verify the roles granted to the user by opening the url
+Verify the roles granted to the user by opening the URL
 OPENCAST-URL/info/me.json in a new browser tab, or navigate to the user details
 and open the tab "Effective Roles".
 
@@ -73,7 +78,7 @@ by adding an entry to `OPENCAST/etc/org.ops4j.pax.logging.cfg`:
 log4j.logger.org.opencastproject.userdirectory.moodle=DEBUG
 ```
 
-### Step 3
+### Step 4
 
 You can grant additional roles to all Moodle users in Opencast by creating a
 group with the name 'Moodle'. You can then add additional roles to this group,

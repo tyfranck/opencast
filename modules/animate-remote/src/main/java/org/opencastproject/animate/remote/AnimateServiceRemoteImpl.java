@@ -34,6 +34,7 @@ import org.apache.http.NameValuePair;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.message.BasicNameValuePair;
+import org.osgi.service.component.annotations.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,6 +45,14 @@ import java.util.List;
 import java.util.Map;
 
 /** Create video animations using Synfig */
+@Component(
+    immediate = true,
+    service = AnimateService.class,
+    property = {
+        "service.description=Animate Workflow Operation Handler",
+        "workflow.operation=animate"
+    }
+)
 public class AnimateServiceRemoteImpl extends RemoteBase implements AnimateService {
 
   private static final Logger logger = LoggerFactory.getLogger(AnimateServiceRemoteImpl.class);
@@ -73,7 +82,7 @@ public class AnimateServiceRemoteImpl extends RemoteBase implements AnimateServi
     HttpResponse response = null;
     try {
       HttpPost post = new HttpPost("/animate");
-      post.setEntity(new UrlEncodedFormEntity(params));
+      post.setEntity(new UrlEncodedFormEntity(params, "UTF-8"));
       response = getResponse(post);
       if (response == null) {
         throw new AnimateServiceException("No response from service");

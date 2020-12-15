@@ -168,7 +168,7 @@ define(['require', 'jquery', 'underscore', 'backbone', 'basil', 'bowser', 'engag
   var interval_initialSeek_ms = 1000;
   var timeout_initialSeek_ms = 250;
   var timer_qualitychange = 1000;
-  var zoom_step_size = 0.05;
+  var zoom_step_size = 0.2;
   var decimal_places = 3;
 
   /* don't change these variables */
@@ -254,8 +254,10 @@ define(['require', 'jquery', 'underscore', 'backbone', 'basil', 'bowser', 'engag
   var isPiP = true;
   var pipPos = 'left';
   var activeCaption = undefined;
+  var overlayTimer;
 
   var foundQualities = undefined;
+  var sortedResolutionsList = undefined;
   var zoomTimeout = 500;
 
   function initTranslate(language, funcSuccess, funcError) {
@@ -309,18 +311,18 @@ define(['require', 'jquery', 'underscore', 'backbone', 'basil', 'bowser', 'engag
     return true;
   }
 
-  function filterTracksByTag(tracks, filterTags) {
+  function filterTracksByTag(tracks, filterTags, strict = false) {
     if (filterTags == undefined) {
       return tracks;
     }
-    var filterTagsArray = filterTags.split(',');
     var newTracksArray = [];
 
     for (var i = 0; i < tracks.length; i++) {
-      var found = false;
-      for (var j = 0; j < tracks[i].tags.tag.length; j++) {
-        for (var k = 0; k < filterTagsArray.length; k++) {
-          if (tracks[i].tags.tag[j] == filterTagsArray[k].trim()) {
+      var found = false,
+          number_of_tags = tracks[i].tags ? tracks[i].tags.tag.length : 0;
+      for (var j = 0; j < number_of_tags; j++) {
+        for (var k = 0; k < filterTags.length; k++) {
+          if (tracks[i].tags.tag[j] == filterTags[k].trim()) {
             found = true;
             newTracksArray.push(tracks[i]);
             break;
@@ -331,10 +333,39 @@ define(['require', 'jquery', 'underscore', 'backbone', 'basil', 'bowser', 'engag
     }
 
     // avoid filtering to an empty list, better play something than nothing
-    if (newTracksArray.length < 1) {
+    if (newTracksArray.length < 1 && !strict) {
       return tracks;
     }
     return newTracksArray;
+  }
+
+  function getTrackResolutionWidth(track) {
+    return track.resolution.split('x')[1]
+  }
+
+  function getTrackClosestToResolution(tracks, quality) {
+    // match quality tag to resolution
+    var desiredWidth;
+    for (var i = 0; i < sortedResolutionsList.length; i++) {
+      if (sortedResolutionsList[i][0] == quality) {
+        desiredWidth = sortedResolutionsList[i][1];
+        break;
+      }
+    }
+
+    if (desiredWidth == undefined) {
+      // This should not happen. quality should be found in sortedResolutionsList
+      // after it got populated by getQualities.
+      return tracks[0];
+    }
+
+    // find track
+    var widthAbsDifferences = tracks.map(function (track) {
+      return Math.abs(getTrackResolutionWidth(track) - desiredWidth);
+    });
+
+    var closestIndex = widthAbsDifferences.indexOf(Math.min(...widthAbsDifferences));
+    return tracks[closestIndex];
   }
 
   /**
@@ -351,7 +382,8 @@ define(['require', 'jquery', 'underscore', 'backbone', 'basil', 'bowser', 'engag
 
     for (var v in videoSources) {
       for (var i = 0; i < videoSources[v].length; i++) {
-        for (var j = 0; j < videoSources[v][i].tags.tag.length; j++) {
+        var number_of_tags = videoSources[v][i].tags ? videoSources[v][i].tags.tag.length : 0;
+        for (var j = 0; j < number_of_tags; j++) {
           if (keyword !== undefined) {
             if (videoSources[v][i].tags.tag[j].indexOf(keyword) > 0) {
               tagList.push(videoSources[v][i].tags.tag[j]);
@@ -382,20 +414,20 @@ define(['require', 'jquery', 'underscore', 'backbone', 'basil', 'bowser', 'engag
     tagsList.forEach(function(quality) {
       qualitiesList.push(quality.substring(0, quality.indexOf('-quality')));
     });
-    var tracks;
+    var tracks = [];
     for (var source in videoSources) {
       if (videoSources[source] !== undefined) {
-        tracks = videoSources[source];
-        break;
+        tracks = tracks.concat(videoSources[source]);
       }
     }
-    var sortedResolutionsList = [];
+    sortedResolutionsList = [];
     sortedResolutionsList = _.map(qualitiesList, function(quality) {
-      var currentTrack = filterTracksByTag(tracks, quality + '-quality')[0];
+      var currentTrack = filterTracksByTag(tracks, [quality + '-quality'])[0];
       if (currentTrack !== undefined && currentTrack.resolution !== undefined)
-        return [quality, currentTrack.resolution.substring(0, currentTrack.resolution.indexOf('x'))];
+        return [quality, getTrackResolutionWidth(currentTrack)];
     });
     sortedResolutionsList.sort(compareQuality);
+    sortedResolutionsList.reverse();
     foundQualities = [];
     for (var i = 0; i < sortedResolutionsList.length; ++i) {
       foundQualities.push(sortedResolutionsList[i][0]);
@@ -485,28 +517,34 @@ define(['require', 'jquery', 'underscore', 'backbone', 'basil', 'bowser', 'engag
         changeQuality(q);
       });
       Engage.trigger(plugin.events.videoFormatsFound.getName(), qualities);
-      if (isMobileMode) {
-        Engage.model.set('quality', 'low');
+      if (!Engage.model.get('quality')) {
+        if (isMobileMode) {
+          Engage.model.set('quality', qualities[qualities.length - 1]);
+        } else {
+          Engage.model.set('quality', qualities[Math.floor(qualities.length / 2)]);
+        }
       }
       changeQuality(Engage.model.get('quality'));
     }
   }
 
-  function changeQuality(q) {
-    if (q) {
+  function changeQuality(quality) {
+    if (quality) {
       var isPaused = videodisplayMaster.paused();
       Engage.trigger(plugin.events.pause.getName(), false);
-      var quality = q + '-quality';
-      Engage.model.set('quality', q);
-      Engage.log('Video: Setting quality to: ' + q);
+      var qualityTag = quality + '-quality';
+      Engage.model.set('quality', quality);
+      Engage.log('Video: Setting quality to: ' + quality);
       var tuples = getSortedVideosourcesArray(globalVideoSource);
       for (var i = 0; i < tuples.length; ++i) {
         var value = tuples[i][1];
         if (value[1][0]) {
-          var track = filterTracksByTag(value[1], quality);
-          if (track && track.length > 0) {
-            videojs(value[0]).src(track[0].src);
+          var track = filterTracksByTag(value[1], [qualityTag], true);
+          if (track.length == 0) {
+            // couldn't find track with exact tag; search with resolution
+            track = [getTrackClosestToResolution(value[1], quality)];
           }
+          videojs(value[0]).src(track[0].src);
         }
       }
       if (pressedPlayOnce && (currentTime > 0)) {
@@ -743,20 +781,34 @@ define(['require', 'jquery', 'underscore', 'backbone', 'basil', 'bowser', 'engag
       var xdiff = relX - vX;
       var ydiff = relY - vY;
 
-      event.preventDefault();
       // zoom in
-      if (event.deltaY > 0) {
-        Engage.trigger(events.setZoomLevel.getName(), [zoom_step_size]);
-        // move towards mouse position
-        var z = zoomLevels[zoomLevels.indexOf($(selector)[0].id) + 1];
+      if (event.shiftKey) {
+        event.preventDefault();
+        if (event.deltaY > 0) {
+          Engage.trigger(events.setZoomLevel.getName(), [zoom_step_size]);
+          // move towards mouse position
+          var z = zoomLevels[zoomLevels.indexOf($(selector)[0].id) + 1];
 
-        moveHorizontal(-((xdiff / 5) / z));
-        moveVertical(-((ydiff / 5) / z));
-      }
+          moveHorizontal(-((xdiff / 5) / z));
+          moveVertical(-((ydiff / 5) / z));
+        }
 
-      // zoom out
-      if (event.deltaY < 0) {
-        Engage.trigger(events.setZoomLevel.getName(), [-zoom_step_size]);
+        // zoom out
+        if (event.deltaY < 0) {
+          Engage.trigger(events.setZoomLevel.getName(), [-zoom_step_size]);
+        }
+      } else {
+        // show zoom overlay
+        var overlay = document.getElementById('overlay'),
+            overlaytext = document.getElementById('overlaytext'),
+            videodisplay = document.getElementById('engage_video');
+        overlaytext.innerText = translate('scroll_overlay_text', 'Use shift + scroll to zoom');
+        overlay.style.display = 'block';
+        overlay.style.top = videodisplay.offsetTop + 'px';
+        overlay.style.height = videodisplay.offsetHeight + 'px';
+        overlayTimer = setTimeout(function() {
+          document.getElementById('overlay').style.display = 'none';
+        }, 1500);
       }
 
       wheelEvent = event;
@@ -967,7 +1019,7 @@ define(['require', 'jquery', 'underscore', 'backbone', 'basil', 'bowser', 'engag
   }
 
   Engage.on(plugin.events.aspectRatioSet.getName(), function (param) {
-    if (param === undefined) {
+    if (param === undefined && aspectRatio) {
       Engage.trigger(plugin.events.aspectRatioSet.getName(), [aspectRatio[1], aspectRatio[2], (aspectRatio[1] / aspectRatio[2]) * 100]);
     }
   })
@@ -1318,9 +1370,14 @@ define(['require', 'jquery', 'underscore', 'backbone', 'basil', 'bowser', 'engag
           // init video.js
           videojs(id, videoOptions, function () {
             var videodisplay = this;
-            // set sources
-            videodisplay.src(videoSource);
+            if (videoSource.length == 1 || foundQualities == undefined || foundQualities.length == 0) {
+              // set sources if there
+              //   * is only a single video (other video sets could have quality tags)
+              //   * are no quality tags in any video set
+              videodisplay.src(videoSource);
+            }
           });
+
           // URL to the flash swf
           if (videojs_swf) {
             Engage.log('Video: Loaded flash component');
@@ -1420,11 +1477,6 @@ define(['require', 'jquery', 'underscore', 'backbone', 'basil', 'bowser', 'engag
       $engageVideoId.css('max-width', minWidth + 'px');
     }
     $engageVideoId.css('min-height', minVideoAreaHeight + 'px');
-    if (maxVideoAreaHeight > minVideoAreaHeight) {
-      $engageVideoId.css('max-height', maxVideoAreaHeight + 'px');
-    } else {
-      $engageVideoId.css('max-height', minVideoAreaHeight + 'px');
-    }
 
     if (!isDefaultLayout()) {
       if (isPiP) {
@@ -1471,8 +1523,9 @@ define(['require', 'jquery', 'underscore', 'backbone', 'basil', 'bowser', 'engag
   }
 
   function registerEventsAudioOnly(videoDisplay) {
-    var audioPlayer_id = $('#' + videoDisplay);
-    var audioPlayer = audioPlayer_id[0];
+    var video_display = $('#' + videoDisplay);
+    var audioPlayer_id = video_display.find('audio');
+    var audioPlayer = video_display[0].player;
     var audioLoadTimeout = window.setTimeout(function () {
       Engage.trigger(plugin.events.audioCodecNotSupported.getName());
       $('.' + class_audioDisplay).hide();
@@ -2011,7 +2064,7 @@ define(['require', 'jquery', 'underscore', 'backbone', 'basil', 'bowser', 'engag
         });
         $videoDisplayClass.removeClass(videoFocusedClass).removeClass(videoUnfocusedClass).addClass(videoDefaultLayoutClass);
         var numberDisplays = $videoDisplayClass.length;
-        $videoDisplayClass.css('width', (((1 / numberDisplays) * 100) - 0.5) + '%');
+        $videoDisplayClass.css('width', ((1 / numberDisplays) * 100) + '%');
         delayedCalculateVideoAreaAspectRatio();
       });
 

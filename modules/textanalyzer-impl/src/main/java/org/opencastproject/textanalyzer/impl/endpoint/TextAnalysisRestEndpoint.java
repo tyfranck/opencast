@@ -61,7 +61,7 @@ import javax.ws.rs.core.Response.Status;
         + "not working and is either restarting or has failed",
         "A status code 500 means a general failure has occurred which is not recoverable and was not anticipated. In "
         + "other words, there is a bug! You should file an error report with your server logs from the time when the "
-        + "error occurred: <a href=\"https://opencast.jira.com\">Opencast Issue Tracker</a>" })
+        + "error occurred: <a href=\"https://github.com/opencast/opencast/issues\">Opencast Issue Tracker</a>" })
 public class TextAnalysisRestEndpoint extends AbstractJobProducerEndpoint {
 
   /** The logging facility */
@@ -86,7 +86,7 @@ public class TextAnalysisRestEndpoint extends AbstractJobProducerEndpoint {
   @POST
   @Produces(MediaType.TEXT_XML)
   @Path("")
-  @RestQuery(name = "analyze", description = "Submit a track for analysis.", restParameters = { @RestParameter(description = "The image to analyze for text.", isRequired = true, name = "image", type = RestParameter.Type.FILE) }, reponses = {
+  @RestQuery(name = "analyze", description = "Submit a track for analysis.", restParameters = { @RestParameter(description = "The image to analyze for text.", isRequired = true, name = "image", type = RestParameter.Type.FILE) }, responses = {
           @RestResponse(description = "OK, The receipt to use when polling for the resulting mpeg7 catalog.", responseCode = HttpServletResponse.SC_OK),
           @RestResponse(description = "The argument cannot be parsed into a media package element.", responseCode = HttpServletResponse.SC_BAD_REQUEST),
           @RestResponse(description = "The service is unavailable at the moment.", responseCode = HttpServletResponse.SC_SERVICE_UNAVAILABLE) }, returnDescription = "The receipt to use when polling for the resulting mpeg7 catalog.")

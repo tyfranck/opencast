@@ -30,7 +30,6 @@ import static org.opencastproject.index.service.util.CatalogAdapterUtil.getCatal
 import org.opencastproject.capture.CaptureParameters;
 import org.opencastproject.external.index.ExternalIndex;
 import org.opencastproject.index.service.api.IndexService;
-import org.opencastproject.index.service.catalog.adapter.MetadataList;
 import org.opencastproject.index.service.catalog.adapter.events.CommonEventCatalogUIAdapter;
 import org.opencastproject.index.service.exception.IndexServiceException;
 import org.opencastproject.index.service.impl.index.event.Event;
@@ -39,8 +38,9 @@ import org.opencastproject.mediapackage.MediaPackage;
 import org.opencastproject.mediapackage.MediaPackageElementFlavor;
 import org.opencastproject.mediapackage.Publication;
 import org.opencastproject.mediapackage.PublicationImpl;
+import org.opencastproject.metadata.dublincore.DublinCoreMetadataCollection;
 import org.opencastproject.metadata.dublincore.EventCatalogUIAdapter;
-import org.opencastproject.metadata.dublincore.MetadataCollection;
+import org.opencastproject.metadata.dublincore.MetadataList;
 import org.opencastproject.scheduler.api.SchedulerService;
 import org.opencastproject.scheduler.api.TechnicalMetadata;
 import org.opencastproject.scheduler.api.TechnicalMetadataImpl;
@@ -119,7 +119,7 @@ public class TestEventsEndpoint extends EventsEndpoint {
     EventCatalogUIAdapter deleteAdapter = EasyMock.createMock(EventCatalogUIAdapter.class);
     EasyMock.expect(deleteAdapter.getFlavor()).andReturn(new MediaPackageElementFlavor(DELETE_CATALOG_TYPE, "episode"))
             .anyTimes();
-    MetadataCollection collectionMock = EasyMock.createNiceMock(MetadataCollection.class);
+    DublinCoreMetadataCollection collectionMock = EasyMock.createNiceMock(DublinCoreMetadataCollection.class);
     EasyMock.expect(deleteAdapter.getOrganization()).andReturn(defaultOrg.getId()).anyTimes();
     EasyMock.expect(deleteAdapter.getFields(EasyMock.anyObject(MediaPackage.class))).andReturn(null).anyTimes();
     EasyMock.expect(deleteAdapter.getUITitle()).andReturn(null).anyTimes();
@@ -226,7 +226,6 @@ public class TestEventsEndpoint extends EventsEndpoint {
         "testAgent23",
         Date.from(Instant.parse("2017-08-28T00:05:00Z")),
         Date.from(Instant.parse("2017-08-28T00:07:00Z")),
-        false,
         null,
         null,
         Collections.singletonMap(CaptureParameters.CAPTURE_DEVICE_NAMES, "default1"),
@@ -248,8 +247,7 @@ public class TestEventsEndpoint extends EventsEndpoint {
         eq(Opt.none()),
         eq(Opt.none()),
         capture(capturedAgentConfig),
-        eq(Opt.none()),
-        eq(SchedulerService.ORIGIN)
+        eq(false)
     );
     EasyMock.expectLastCall();
 
@@ -262,7 +260,6 @@ public class TestEventsEndpoint extends EventsEndpoint {
         "testAgent24",
         Date.from(Instant.parse("2017-08-29T00:05:00Z")),
         Date.from(Instant.parse("2017-08-29T00:07:00Z")),
-        false,
         null,
         null,
         Collections.singletonMap(CaptureParameters.CAPTURE_DEVICE_NAMES, "default1,default2"),

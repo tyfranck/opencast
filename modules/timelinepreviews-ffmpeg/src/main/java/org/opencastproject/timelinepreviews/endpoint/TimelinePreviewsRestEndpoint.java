@@ -61,7 +61,7 @@ import javax.ws.rs.core.Response;
                 + "not working and is either restarting or has failed",
         "A status code 500 means a general failure has occurred which is not recoverable and was not anticipated. In "
                 + "other words, there is a bug! You should file an error report with your server logs from the time "
-                + "when the error occurred: <a href=\"https://opencast.jira.com\">Opencast Issue Tracker</a>" })
+                + "when the error occurred: <a href=\"https://github.com/opencast/opencast/issues\">Opencast Issue Tracker</a>" })
 public class TimelinePreviewsRestEndpoint extends AbstractJobProducerEndpoint {
 
   /** The logger */
@@ -114,7 +114,7 @@ public class TimelinePreviewsRestEndpoint extends AbstractJobProducerEndpoint {
             @RestParameter(description = "The number of timeline preview images to generate.",
                     isRequired = true, name = "imageCount", type = RestParameter.Type.INTEGER)
           },
-          reponses = {
+          responses = {
             @RestResponse(description = "Timeline previews job successfully created",
                     responseCode = HttpServletResponse.SC_OK),
             @RestResponse(description = "The given track can't be parsed.",

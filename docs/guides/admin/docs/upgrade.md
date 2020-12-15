@@ -1,63 +1,87 @@
-Upgrading Opencast from 6.x to 7.x
+Upgrading Opencast from 8.x to 9.x
 ==================================
 
-This guide describes how to upgrade Opencast 6.x to 7.x. In case you need information about how to upgrade older
-versions of Opencast, please refer to the [old release notes](https://docs.opencast.org).
-
-How to Upgrade
---------------
+This guide describes how to upgrade Opencast 8.x to 9.x. In case you need information about how to upgrade older
+versions of Opencast, please refer to [older release notes](https://docs.opencast.org).
 
 1. Stop your current Opencast instance
-2. Replace Opencast 6.x with 7.x
+2. Replace Opencast with the new version
 3. Back-up Opencast files and database (optional)
-4. [Upgrade the database](#database-migration)
-5. [Rebuild Elasticsearch index](#rebuild-elasticsearch-index)
-6. Review the [configuration](#configuration-changes) and [security configuration
-   changes](#security-configuration-changes) and adjust your configuration accordingly
-
-
-Database Migration
-------------------
-
-As part of performance optimizations, a foreign key constraint was added to one table. This requires a database schema
-update. As with all database migrations, we recommend to create a database backup before attempting the upgrade.
-
-You can find the database upgrade script in `docs/upgrade/6_to_7/`. This script is suitable for both, MariaDB and
-MySQL.
-
-
-ActiveMQ Migration
-------------------
-
-*So far, this is not required*
-
-
-Removal of Deprecated Access Control Ruleset
---------------------------------------------
-
-Opencast 7 finally removes the long-since deprecated `security/xacml` flavor for access control lists. This had not been
-used since before Opencast 1.2 (we could not track down its exact deprecation date due to its age). Additionally, all
-rule-sets which had been modified since had also been automnatically been updated to `security/xacml+series` which
-serves as replacement for the old flavor.
-
-In case Opencast still encounters such a rule set, it will now be ignored and access will be denied by default. A simple
-update of the permissions would fix this if that is required.
-
-Due to the extreme unlikeliness of anyone encountering this problem, there is no automatic migration. In case you run a
-system migrated from a pre-1.2 Matterhorn, you can make sure that there are no old rule-sets left using the following
-SQL queries:
-
-```sql
--- Check OAI-PMH publications:
-select * from oc_oaipmh_elements where flavor = 'security/xacml';
--- Check engage publications:
-select * from oc_search where mediapackage_xml like '%"security/xacml"%';
--- Check asset manager:
-select * from oc_assets_snapshot where mediapackage_xml like '%"security/xacml"%';
-```
-
+4. Upgrade the database
+5. [Install and configure a standalone Elasticsearch node](#install-and-confifure-a-standalone-elasticsearch-node)
+6. [Review the configuration changes and adjust your configuration accordingly](#configuration-changes)
+7. Remove search index data folder
+8. Start Opencast
+9. [Rebuild the Elasticsearch indexes](#rebuild-the-elasticsearch-indexes)
+10. [Check passwords](#check-passwords)
 
 Configuration Changes
 ---------------------
 
-- *TODO*
+Note that this section will only highlight a few important changes.
+Please make sure to compare your configuration against the current configuration files.
+
+- The default for the configuration option `lti.create_jpa_user_reference` changed from `false` (Opencast 8.3) to `true`.
+- Make sure to have `?useMysqlMetadata=true` appended to `org.opencastproject.db.jdbc.url` if you use MariaDB as
+  database.
+
+Install and configure a standalone Elasticsearch node
+-----------------------------------------------------
+
+In the past, Opencast came with its own integrated Elasticsearch node. However, recent versions of Elasticsearch no longer
+support to be embedded in applications. Since the Elasticsearch client was updated to version 7, Opencast now requires an
+external Elasticsearch node of the same version to be present. This means, that all Opencast adopters now have to run
+Elasticsearch.
+
+Please check [the documentation](modules/searchindex/elasticsearch.md) for information about how to setup an external node.
+
+If you already used an external Elasticsearch node in the past, please update your node to version 7. Since the index
+schema has changed, you will need to drop you indices and [rebuild them](#rebuild-the-elasticsearch-indexes).
+
+Rebuild the Elasticsearch Indexes
+----------------------------------
+
+In order to populate the external Elasticsearch index, an index rebuild is necessary.
+
+### Admin Interface
+
+Stop Opencast, delete the index directory at `data/index`, restart Opencast and make an HTTP POST request to
+`/admin-ng/index/recreateIndex`.
+
+Example (using cURL):
+
+    curl -i --digest -u <digest_user>:<digest_password> -H "X-Requested-Auth: Digest" -s -X POST \
+      https://example.opencast.org/admin-ng/index/recreateIndex
+
+You can also just open the REST documentation, which can be found under the “Help” section in the admin interface (the
+“?” symbol at the top right corner). Then go to the “Admin UI - Index Endpoint” section and use the testing form on
+`/recreateIndex` to issue a POST request.
+
+In both cases you should get a 200 HTTP status.
+
+### External API
+
+If you are using the External API, then also trigger a rebuilt of its index by sending an HTTP POST request to
+`/api/recreateIndex`.
+
+Example (using cURL):
+
+    curl -i --digest -u <digest_user>:<digest_password> -H "X-Requested-Auth: Digest" -s -X POST \
+      https://example.opencast.org/api/recreateIndex
+
+You can also just open the REST documentation, which can be found under the “Help” section in the admin interface (the
+“?” symbol at the top right corner). Then go to the “External API - Base Endpoint” section and use the testing form on
+`/recreateIndex`.
+
+In both cases you should again get a 200 HTTP status.
+
+
+Check Passwords
+---------------
+
+Since Opencast 8.1 [passwords are stored in a much safer way than before
+](https://github.com/opencast/opencast/security/advisories/GHSA-h362-m8f2-5x7c)
+but to benefit from this mechanism, users have to reset their password.
+
+You can use the endpoint `/user-utils/users/md5.json` to find out which users are still using MD5-hashed passwords and
+suggest to them that they update their passwords.

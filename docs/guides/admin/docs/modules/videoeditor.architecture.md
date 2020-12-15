@@ -1,15 +1,15 @@
 # Video Editor: Architecture
 
-## Modules Of The Videoeditor
+## Modules Of The Video Editor
 
-The Videoeditor consists of the following moduls. Additional to this there is a Workflow Operation Handler within the
+The Video Editor consists of the following modules. Additional to this there is a Workflow Operation Handler within the
 Conductor module that provides the UI elements for the Video Editor.
 
 * silencedetection-api
     * API for the silence detection
 * silencedetection-impl
     * Implementation of the silence detection service
-    * Provides a SMIL file that can be used by the Video Editor UI or the Video Editor service to create a new cutted
+    * Provides a SMIL file that can be used by the Video Editor UI or the Video Editor service to create a new cut
       file.
 * silencedetection-remote
     * Remote implementation of the silence detection service to enable load balancing in a distributed setup.
@@ -19,9 +19,9 @@ Conductor module that provides the UI elements for the Video Editor.
     * The SMIL service allows creation and manipulation of SMIL files. This is more or less a helper class to create
       consistent SMIL files.
 * videoeditor-api
-    * The API for the Video Editor which takes a SMIL file as an input to create a cutted version of the media files.
+    * The API for the Video Editor which takes a SMIL file as an input to create a cut version of the media files.
 * videoeditor-ffmpeg-impl
-    * The Video Editor service creates new media files that will be cutted based on the information provided in a SMIL
+    * The Video Editor service creates new media files that will be cut based on the information provided in a SMIL
       file. In the current implementation GStreamer with the gnonlin module is used to process the files.
 * videoeditor-remote
     * Remote implementation of the video editor service to enable load balancing in a distributed setup.
@@ -103,9 +103,9 @@ The **silence** operation performs a silence detection on an audio-only input fi
 detection API and impl (or remote in a distributed system) modules to be installed to process the request.
 
 The input parameters are source-flavors that takes one flavor/sub-type or multiple input flavors with the *-operator
-followed by the sub-type, and reference-tracks-flavour where the subtype of the media files that should be included in
+followed by the sub-type, and reference-tracks-flavor where the subtype of the media files that should be included in
 the provided SMIL file will be set. The * should not be modified here. In most cases it is not important which
-reference-tracks-flavour is selected as long as all relevant flavors are available within this feature. "preview" is not
+reference-tracks-flavor is selected as long as all relevant flavors are available within this feature. "preview" is not
 a bad choice as all files available within the video editor UI are also available with this flavor, unlike "source"
 where not all flavors may be available, as some recorders record all streams to one file and the tracks are separated
 afterwards. The editor operation afterwards will anyway try to select the best available quality.
@@ -139,7 +139,7 @@ The input parameters are:
 * source-flavors: the subtype of all media files in the best available quality and in a codec that can be processed by
    the videoeditor modules. The *-should usually not be changed, as tracks can be excluded in the editor UI too, only
    the subtype is important. All needed videos should be available within this flavor.
-* preview-flavours: the subtype of the media files that should be used for the preview player. This is an HTML5 player
+* preview-flavors: the subtype of the media files that should be used for the preview player. This is an HTML5 player
    so the coded can be H.264 or WebM based on the browser. The main flavor should be the same as in source-flavors.
 * smil-flavors: the smil file(s) that should be used as a proposal within the editor UI. If * is used presenter/smil
    will be favored, if this is not available the first in the list will be used.

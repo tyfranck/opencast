@@ -29,6 +29,7 @@ import org.opencastproject.security.api.JaxbUser;
 import org.opencastproject.security.api.Organization;
 import org.opencastproject.security.api.Role;
 import org.opencastproject.security.api.RoleProvider;
+import org.opencastproject.security.api.SecurityConstants;
 import org.opencastproject.security.api.User;
 import org.opencastproject.security.api.UserProvider;
 import org.opencastproject.userdirectory.moodle.MoodleWebService.CoreUserGetUserByFieldFilters;
@@ -39,6 +40,7 @@ import com.google.common.cache.LoadingCache;
 import com.google.common.util.concurrent.ExecutionError;
 import com.google.common.util.concurrent.UncheckedExecutionException;
 
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -123,6 +125,11 @@ public class MoodleUserProviderInstance implements UserProvider, RoleProvider, C
   private String groupPattern;
 
   /**
+   * String to prepend to context roles like “1234_Learner”
+   */
+  private final String contextRolePrefix;
+
+  /**
    * A cache of users, which lightens the load on Moodle.
    */
   private LoadingCache<String, Object> cache;
@@ -142,26 +149,45 @@ public class MoodleUserProviderInstance implements UserProvider, RoleProvider, C
    */
   private AtomicLong moodleWebServiceRequests;
 
+  /** If usernames requested from Moodle shall be converted to lowercase */
+  private final boolean lowercaseUsername;
+
+  private final List<String> ignoredUsernames;
+
   /**
    * Constructs an Moodle user provider with the needed settings.
    *
    * @param pid             The pid of this service.
-   * @param client          The Moodle web serivce client.
+   * @param client          The Moodle web service client.
    * @param organization    The organization.
    * @param coursePattern   The pattern of a Moodle course ID.
    * @param userPattern     The pattern of a Moodle user ID.
+   * @param groupPattern    The pattern of a Moodle group ID.
    * @param groupRoles      Whether to activate groupRoles
    * @param cacheSize       The number of users to cache.
    * @param cacheExpiration The number of minutes to cache users.
+   * @param adminUserName   Name of the global admin user.
+   * @param contextRolePrefix Prefix to prepend to context roles like 1234_Learner
    */
   public MoodleUserProviderInstance(String pid, MoodleWebService client, Organization organization,
-          String coursePattern, String userPattern, String groupPattern, boolean groupRoles, int cacheSize, int cacheExpiration) {
+          String coursePattern, String userPattern, String groupPattern, boolean groupRoles, int cacheSize,
+          int cacheExpiration, String adminUserName, final boolean lowercaseUsername, final String contextRolePrefix) {
     this.client = client;
     this.organization = organization;
     this.groupRoles = groupRoles;
     this.coursePattern = coursePattern;
     this.userPattern = userPattern;
     this.groupPattern = groupPattern;
+    this.lowercaseUsername = lowercaseUsername;
+    this.contextRolePrefix = contextRolePrefix;
+
+    // initialize user filter
+    this.ignoredUsernames = new ArrayList<>();
+    this.ignoredUsernames.add("");
+    this.ignoredUsernames.add(SecurityConstants.GLOBAL_ANONYMOUS_USERNAME);
+    if (StringUtils.isNoneEmpty(adminUserName)) {
+      ignoredUsernames.add(adminUserName);
+    }
 
     logger.info("Creating new MoodleUserProviderInstance(pid={}, url={}, cacheSize={}, cacheExpiration={})", pid,
             client.getURL(), cacheSize, cacheExpiration);
@@ -341,17 +367,6 @@ public class MoodleUserProviderInstance implements UserProvider, RoleProvider, C
   /**
    * {@inheritDoc}
    *
-   * @see org.opencastproject.security.api.RoleProvider#getRoles()
-   */
-  @Override
-  public Iterator<Role> getRoles() {
-    // We won't ever enumerate all Moodle courses, so return an empty list here
-    return Collections.emptyIterator();
-  }
-
-  /**
-   * {@inheritDoc}
-   *
    * @see org.opencastproject.security.api.RoleProvider#getRolesForUser(java.lang.String)
    */
   @Override
@@ -359,7 +374,7 @@ public class MoodleUserProviderInstance implements UserProvider, RoleProvider, C
     List<Role> roles = new LinkedList<>();
 
     // Don't answer for admin, anonymous or empty user
-    if ("admin".equals(username) || "".equals(username) || "anonymous".equals(username)) {
+    if (ignoredUsernames.stream().anyMatch(u -> u.equals(username))) {
       logger.debug("we don't answer for: {}", username);
       return roles;
     }
@@ -399,6 +414,11 @@ public class MoodleUserProviderInstance implements UserProvider, RoleProvider, C
     if (query.isEmpty())
       return Collections.emptyIterator();
 
+    // Verify query starts with prefix configured for this user provider instance
+    if (!query.startsWith(contextRolePrefix)) {
+      return Collections.emptyIterator();
+    }
+
     // Verify that role name ends with LEARNER_ROLE_SUFFIX or INSTRUCTOR_ROLE_SUFFIX
     if (exact
             && !query.endsWith("_" + LEARNER_ROLE_SUFFIX)
@@ -406,18 +426,19 @@ public class MoodleUserProviderInstance implements UserProvider, RoleProvider, C
             && !query.endsWith("_" + GROUP_ROLE_SUFFIX))
       return Collections.emptyIterator();
 
-    boolean findGroupRole = groupRoles && query.startsWith(GROUP_ROLE_PREFIX);
+    final String groupRolePrefix = contextRolePrefix + GROUP_ROLE_PREFIX;
+    final boolean findGroupRole = groupRoles && query.startsWith(groupRolePrefix);
 
     // Extract Moodle id
-    String moodleId = findGroupRole ? query.substring(GROUP_ROLE_PREFIX.length()) : query;
+    String moodleId = findGroupRole ? query.substring(groupRolePrefix.length()) : query;
     if (query.endsWith("_" + LEARNER_ROLE_SUFFIX)) {
-      moodleId = query.substring(0, query.lastIndexOf("_" + LEARNER_ROLE_SUFFIX));
+      moodleId = query.substring(contextRolePrefix.length(), query.lastIndexOf("_" + LEARNER_ROLE_SUFFIX));
       ltirole = true;
     } else if (query.endsWith("_" + INSTRUCTOR_ROLE_SUFFIX)) {
-      moodleId = query.substring(0, query.lastIndexOf("_" + INSTRUCTOR_ROLE_SUFFIX));
+      moodleId = query.substring(contextRolePrefix.length(), query.lastIndexOf("_" + INSTRUCTOR_ROLE_SUFFIX));
       ltirole = true;
     } else if (query.endsWith("_" + GROUP_ROLE_SUFFIX)) {
-      moodleId = query.substring(0, query.lastIndexOf("_" + GROUP_ROLE_SUFFIX));
+      moodleId = query.substring(contextRolePrefix.length(), query.lastIndexOf("_" + GROUP_ROLE_SUFFIX));
       ltirole = true;
     }
 
@@ -445,8 +466,8 @@ public class MoodleUserProviderInstance implements UserProvider, RoleProvider, C
       roles.add(new JaxbRole(query, jaxbOrganization, "Moodle Site Role", Role.Type.EXTERNAL));
     } else if (findGroupRole) {
       // Group ID
-      roles.add(new JaxbRole(GROUP_ROLE_PREFIX + moodleId + "_" + GROUP_ROLE_SUFFIX, jaxbOrganization,
-              "Moodle Group Learner Role", Role.Type.EXTERNAL));
+      roles.add(new JaxbRole(contextRolePrefix + GROUP_ROLE_PREFIX + moodleId + "_" + GROUP_ROLE_SUFFIX,
+          jaxbOrganization, "Moodle Group Learner Role", Role.Type.EXTERNAL));
     } else {
       // Course ID - return both roles
       roles.add(new JaxbRole(moodleId + "_" + INSTRUCTOR_ROLE_SUFFIX, jaxbOrganization,
@@ -468,13 +489,17 @@ public class MoodleUserProviderInstance implements UserProvider, RoleProvider, C
    * @return The user.
    */
   private User loadUserFromMoodle(String username) {
+    if (lowercaseUsername) {
+      username = username.toLowerCase();
+    }
+
     logger.debug("loadUserFromMoodle({})", username);
 
     if (cache == null)
       throw new IllegalStateException("The Moodle user detail service has not yet been configured");
 
     // Don't answer for admin, anonymous or empty user
-    if ("admin".equals(username) || "".equals(username) || "anonymous".equals(username)) {
+    if (ignoredUsernames.contains(username)) {
       logger.debug("We don't answer for: " + username);
       return null;
     }
@@ -505,28 +530,40 @@ public class MoodleUserProviderInstance implements UserProvider, RoleProvider, C
 
       // Create Opencast Objects
       Set<JaxbRole> roles = new HashSet<>();
-      roles.add(new JaxbRole(Group.ROLE_PREFIX + "MOODLE", jaxbOrganization, "Moodle Users", Role.Type.EXTERNAL_GROUP));
-      for (String courseId : courseIdsInstructor) {
-        roles.add(new JaxbRole(courseId + "_" + INSTRUCTOR_ROLE_SUFFIX, jaxbOrganization, "Moodle Course Instructor Role",
-                Role.Type.EXTERNAL));
+      roles.add(new JaxbRole(Group.ROLE_PREFIX + contextRolePrefix + "MOODLE", jaxbOrganization, "Moodle Users",
+          Role.Type.EXTERNAL_GROUP));
+      for (final String courseId : courseIdsInstructor) {
+        roles.add(contextRole(courseId, INSTRUCTOR_ROLE_SUFFIX, jaxbOrganization));
       }
-      for (String courseId : courseIdsLearner) {
-        roles.add(new JaxbRole(courseId + "_" + LEARNER_ROLE_SUFFIX, jaxbOrganization, "Moodle Course Learner Role",
-                Role.Type.EXTERNAL));
+      for (final String courseId : courseIdsLearner) {
+        roles.add(contextRole(courseId, LEARNER_ROLE_SUFFIX, jaxbOrganization));
       }
-      for (String groupId : groupIdsLearner) {
-        roles.add(new JaxbRole(GROUP_ROLE_PREFIX + groupId + "_" + GROUP_ROLE_SUFFIX, jaxbOrganization,
-                "Moodle Group Learner Role", Role.Type.EXTERNAL));
+      for (final String groupId : groupIdsLearner) {
+        roles.add(contextRole(GROUP_ROLE_PREFIX + groupId, GROUP_ROLE_SUFFIX, jaxbOrganization));
       }
 
       return new JaxbUser(moodleUser.getUsername(), null, moodleUser.getFullname(), moodleUser.getEmail(),
-              this.getName(), true, jaxbOrganization, roles);
+              this.getName(), jaxbOrganization, roles);
     } catch (Exception e) {
-      logger.warn("Exception loading Moodle user {} at {}: {}", username, client.getURL(), e.getMessage());
+      logger.warn("Exception loading Moodle user {} at {}", username, client.getURL());
     } finally {
       currentThread.setContextClassLoader(originalClassloader);
     }
 
     return null;
+  }
+
+  /**
+   * Create an Opencast JaxbRole based on a Moodle user's context.
+   *
+   * @param context Moodle user's context like course identifier
+   * @param contextRole Moodle user's context role like Instructor
+   * @param organization Opencast organization to create user for
+   * @return JaxbRole
+   */
+  private JaxbRole contextRole(final String context, final String contextRole, final JaxbOrganization organization) {
+    final String name = contextRolePrefix + context + "_" + contextRole;
+    final String description = "Moodle Course " + contextRole + " Role";
+    return new JaxbRole(name, organization, description, Role.Type.EXTERNAL);
   }
 }

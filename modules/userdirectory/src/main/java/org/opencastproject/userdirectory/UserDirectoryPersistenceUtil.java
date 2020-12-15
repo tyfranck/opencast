@@ -68,8 +68,8 @@ public final class UserDirectoryPersistenceUtil {
       // Save or update roles
       for (Role role : roles) {
         JpaRole jpaRole = (JpaRole) role;
-        saveOrganization((JpaOrganization) jpaRole.getOrganization(), emf);
-        JpaRole findRole = findRole(jpaRole.getName(), jpaRole.getOrganization().getId(), emf);
+        saveOrganization(jpaRole.getJpaOrganization(), emf);
+        JpaRole findRole = findRole(jpaRole.getName(), jpaRole.getOrganizationId(), emf);
         if (findRole == null) {
           em.persist(jpaRole);
           updatedRoles.add(jpaRole);
@@ -382,8 +382,26 @@ public final class UserDirectoryPersistenceUtil {
     EntityManager em = null;
     try {
       em = emf.createEntityManager();
-      Query q = em.createNamedQuery("User.countAll");
+      Query q = em.createNamedQuery("User.countAllByOrg");
       q.setParameter("org", organizationId);
+      return ((Number) q.getSingleResult()).longValue();
+    } finally {
+      if (em != null)
+        em.close();
+    }
+  }
+
+  /**
+   * Returns the total number of users
+   *
+   * @param emf the entity manager factory
+   * @return the total number of users
+   */
+  public static long countUsers(EntityManagerFactory emf) {
+    EntityManager em = null;
+    try {
+      em = emf.createEntityManager();
+      Query q = em.createNamedQuery("User.countAll");
       return ((Number) q.getSingleResult()).longValue();
     } finally {
       if (em != null)

@@ -1,7 +1,7 @@
 # AnalyzeAudioWorkflowOperationHandler
 
 ## Description
-The AnalyzeAudioiWorkflowOperationHandler analyzes the first audio stream of a video or audio track through SoX
+The AnalyzeAudioWorkflowOperationHandler analyzes the first audio stream of a video or audio track through SoX
 (http://sox.sourceforge.net/) and writes the result back to the given track.
 
 This workflow operation handler can be used with audio and/or video files. At least one audio stream must be available
@@ -48,9 +48,7 @@ Example result track:
 |source-flavors    |"presentation/work,presenter/work"|The "flavors" of the track to use as a source input|EMPTY|
 |source-flavor     |"presentation/work"               |The "flavor" of the track to use as a source input|EMPTY|
 |source-tags       |"engage,atom,rss"                 |The "tag" of the track to use as a source input|EMPTY|
-|force-transcode   |"true" or "false"                 |Whether to force transcoding the audio stream
-(This is needed when trying to strip an audio stream from an audio only video container, because SoX can not handle video formats, so it must be encoded to an audio format)|FALSE|
-
+|force-transcode   |"true" or "false"                 |Whether to force transcoding the audio stream (This is needed when trying to strip an audio stream from an audio only video container, because SoX can not handle video formats, so it must be encoded to an audio format)|FALSE|
 
 ## Operation Example
 

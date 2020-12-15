@@ -21,7 +21,6 @@
 package org.opencastproject.assetmanager.impl;
 
 import static com.entwinemedia.fn.fns.Booleans.eq;
-import static java.lang.String.format;
 
 import org.opencastproject.assetmanager.api.Snapshot;
 import org.opencastproject.assetmanager.impl.persistence.Database;
@@ -34,6 +33,7 @@ import org.opencastproject.assetmanager.impl.storage.StoragePath;
 import org.opencastproject.util.IoSupport;
 import org.opencastproject.util.data.Option;
 import org.opencastproject.util.persistencefn.PersistenceEnvs;
+import org.opencastproject.util.persistencefn.PersistenceUtil;
 import org.opencastproject.util.persistencefn.Queries;
 import org.opencastproject.workspace.api.Workspace;
 
@@ -77,7 +77,9 @@ public class AbstractTieredStorageAssetManagerTest<A extends TieredStorageAssetM
         return null;
       }
     });
-    final Database db = new Database(penv);
+
+    final Database db = new Database(
+            PersistenceUtil.mkTestEntityManagerFactoryFromSystemProperties(PERSISTENCE_UNIT));
     //
     final Workspace workspace = EasyMock.createNiceMock(Workspace.class);
     EasyMock.expect(workspace.get(EasyMock.anyObject(URI.class)))
@@ -166,7 +168,7 @@ public class AbstractTieredStorageAssetManagerTest<A extends TieredStorageAssetM
       private Set<StoragePath> store = new HashSet<>();
 
       private void logSize() {
-        logger.debug(format("Store contains %d asset/s", store.size()));
+        logger.debug("Store contains {} asset/s", store.size());
       }
 
       @Override public void put(StoragePath path, Source source) throws AssetStoreException {
@@ -235,7 +237,7 @@ public class AbstractTieredStorageAssetManagerTest<A extends TieredStorageAssetM
       private Random r = new Random(System.nanoTime());
 
       private void logSize() {
-        logger.debug(format("Store contains %d asset/s", store.size()));
+        logger.debug("Store contains {} asset/s", store.size());
       }
 
       private void logFault() throws AssetStoreException {
