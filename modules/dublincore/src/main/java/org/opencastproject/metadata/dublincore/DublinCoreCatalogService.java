@@ -49,11 +49,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
-import javax.xml.transform.Transformer;
-import javax.xml.transform.TransformerFactory;
-import javax.xml.transform.dom.DOMSource;
-import javax.xml.transform.stream.StreamResult;
-
 /**
  * Parses {@link DublinCoreCatalog}s from serialized DC representations.
  */
@@ -73,7 +68,7 @@ public class DublinCoreCatalogService implements CatalogService<DublinCoreCatalo
 
   protected Workspace workspace = null;
 
-  @Reference(name = "workspace")
+  @Reference
   public void setWorkspace(Workspace workspace) {
     this.workspace = workspace;
   }
@@ -95,15 +90,9 @@ public class DublinCoreCatalogService implements CatalogService<DublinCoreCatalo
   }
 
   public InputStream serialize(DublinCoreCatalog catalog) throws IOException {
-    try {
-      Transformer tf = TransformerFactory.newInstance().newTransformer();
-      DOMSource xmlSource = new DOMSource(catalog.toXml());
-      ByteArrayOutputStream out = new ByteArrayOutputStream();
-      tf.transform(xmlSource, new StreamResult(out));
-      return new ByteArrayInputStream(out.toByteArray());
-    } catch (Exception e) {
-      throw new IOException(e);
-    }
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    catalog.toXml(out, true);
+    return new ByteArrayInputStream(out.toByteArray());
   }
 
   /**
@@ -140,16 +129,16 @@ public class DublinCoreCatalogService implements CatalogService<DublinCoreCatalo
           for (DublinCoreValue creator : dc.get(DublinCore.PROPERTY_CREATOR)) {
             creators.add(creator.getValue());
           }
-          metadata.setCreators(creators.toArray(new String[creators.size()]));
+          metadata.setCreators(creators.toArray(new String[0]));
         }
 
         // Contributor
         if (dc.hasValue(DublinCore.PROPERTY_CONTRIBUTOR)) {
-          List<String> contributors = new ArrayList<String>();
+          List<String> contributors = new ArrayList<>();
           for (DublinCoreValue contributor : dc.get(DublinCore.PROPERTY_CONTRIBUTOR)) {
             contributors.add(contributor.getValue());
           }
-          metadata.setContributors(contributors.toArray(new String[contributors.size()]));
+          metadata.setContributors(contributors.toArray(new String[0]));
         }
 
         // Subject

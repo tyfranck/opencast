@@ -46,7 +46,7 @@ means that even if your media URLs leak, they will only be valid for a configura
 
 Set `org.opencastproject.distribution.aws.s3.presigned.url` to `true` to enable this feature.
 
-Note: **CloudFront** and **Presigned URL** can be used together. 
+Note: **CloudFront** and **Presigned URL** can be used together.
 
 Note: Opencast's distribution files can be quite large depending on your settings, and some of your users may not be
 able to complete the download within the time limit.  While AWS should not stop a download currently in progress, some
@@ -73,7 +73,7 @@ There are [two access](https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingBuck
 - Virtual hosted style sample: `https://bucketname.s3.service.com/`
 - Path style sample: `https://s3.service.com/bucketname`
 
-AWS use virtual hosted style by default, and will deprecate path style. Yet, for self hosted s3 compatible service, path style URL is useful.  
+AWS use virtual hosted style by default, and will deprecate path style. Yet, for self hosted s3 compatible service, path style URL is useful.
 Set `org.opencastproject.distribution.aws.s3.path.style` to `true` to enable this feature.
 
 Opencast Service Configuration
@@ -82,18 +82,24 @@ Opencast Service Configuration
 The Opencast AWS S3 Distribution service has five configuration keys, which can be found in the
 `org.opencastproject.distribution.aws.s3.AwsS3DistributionServiceImpl.cfg` configuration file.
 
-|Key name|Value|Example|
-|--------|-----|-------|
-|org.opencastproject.distribution.aws.s3.distribution.enable|True to enable S3 distribution, false otherwise|true|
-|org.opencastproject.distribution.aws.s3.region|The AWS region to set|us-west-2|
-|org.opencastproject.distribution.aws.s3.endpoint|The endpoint of AWS S3 service. Only used with S3 compatible service|https://s3.service.com|
-|org.opencastproject.distribution.aws.s3.path.style|True to enable path style access URL for bucket, false otherwise|false|
-|org.opencastproject.distribution.aws.s3.bucket|The S3 bucket name|example-org-dist|
-|org.opencastproject.distribution.aws.s3.distribution.base|Where the S3 files are available from.  This value can be derived from the bucket and region values, or is set by CloudFront.|http://s3-us-west-2.amazonaws.com/example-org-dist, or DOMAIN_NAME.cloudfront.net|
-|org.opencastproject.distribution.aws.s3.access.id|Your access ID|20 alphanumeric characters|
-|org.opencastproject.distribution.aws.s3.secret.key|Your secret key|40 characters|
-|org.opencastproject.distribution.aws.s3.presigned.url|True to enable presigned URL, false otherwise|false|
-|org.opencastproject.distribution.aws.s3.presigned.url.valid.duration|Valid duration for presigned URL in milliseconds|14400000|
+| Key                                                                  | Description                                                                              | Default                      | Example                                                                               |
+|:---------------------------------------------------------------------|:-----------------------------------------------------------------------------------------|:----------------------------:|:-------------------------------------------------------------------------------------:|
+| org.opencastproject.distribution.aws.s3.distribution.enable          | Whether to enable distribution to S3                                                     | false                        |                                                                                       |
+| org.opencastproject.distribution.aws.s3.region                       | The AWS region to set                                                                    |                              | us-east-1                                                                             |
+| org.opencastproject.distribution.aws.s3.bucket                       | The S3 bucket name                                                                       |                              | example-org-dist                                                                      |
+| org.opencastproject.distribution.aws.s3.access.id                    | Your access ID                                                                           |                              | 20 alphanumeric characters                                                            |
+| org.opencastproject.distribution.aws.s3.secret.key                   | Your secret key                                                                          |                              | 40 characters                                                                         |
+| org.opencastproject.distribution.aws.s3.endpoint                     | The endpoint to use                                                                      | Default AWS S3 endpoint      | https://s3.service.com                                                                |
+| org.opencastproject.distribution.aws.s3.path.style                   | Whether to use path style access URL                                                     | false / Default AWS S3 style |                                                                                       |
+| org.opencastproject.distribution.aws.s3.distribution.base            | Where the S3 files are available <br>(derived from bucket & region or set by CloudFront) |                              | http://s3-us-west-2.amazonaws.com/example-org-dist <br> or DOMAIN_NAME.cloudfront.net |
+| org.opencastproject.distribution.aws.s3.presigned.url                | Whether to enable presigned URL                                                          | false                        |                                                                                       |
+| org.opencastproject.distribution.aws.s3.presigned.url.valid.duration | Valid duration for presigned URL in ms                                                   | 21600000 (6 hours)           |                                                                                       |
+| org.opencastproject.distribution.aws.s3.max.connections              | Number of max connections                                                                | 50                           |                                                                                       |
+| org.opencastproject.distribution.aws.s3.connection.timeout           | Connection timeout in ms                                                                 | 10000                        |                                                                                       |
+| org.opencastproject.distribution.aws.s3.max.retries                  | Number of max retries                                                                    | 100                          |                                                                                       |
+| job.load.aws.s3.distribute                                           | Distribute job load                                                                      | 0.1                          |                                                                                       |
+| job.load.aws.s3.retract                                              | Retract job load                                                                         | 0.1                          |                                                                                       |
+| job.load.aws.s3.restore                                              | Restore job load                                                                         | 0.1                          |                                                                                       |
 
 If *org.opencastproject.distribution.aws.s3.access.id* and *org.opencastproject.distribution.aws.s3.secret.key* are
  not *explicitly* provided, search for credentials will be performed in the order specified by the
@@ -107,8 +113,8 @@ Amazon S3 distribution is already included in the default Opencast workflows, ho
 "Remove this line if you wish to publish to AWS S3".  Both of these lines must be removed before publishing to AWS S3
 will function correctly.
 
-If you wish to use AWS S3 publishing with your own custom workflow, you must add the `publish-aws` workflow operation to
-your workflow.  The operation documentation can be found [here](../workflowoperationhandlers/publish-aws-woh.md).
+If you wish to use AWS S3 publishing with your own custom workflow, you must add the `publish-engage-aws` workflow operation to
+your workflow.  The operation documentation can be found [here](../workflowoperationhandlers/publish-engage-aws-woh.md).
 
 Publishing to multiple distribution services
 --------------------------------------------
@@ -119,7 +125,7 @@ workflow operation is *last* in the workflow will be the final publication.
 Using this handler in custom workflows
 --------------------------------------
 
-If your workflow contains both `publish-engage` and `publish-aws`, in that order, and without a
+If your workflow contains both `publish-engage` and `publish-engage-aws`, in that order, and without a
 [conditional](../configuration/workflow.md) you would have publication files stored both locally *and* in AWS.  This is
 likely not what you want, so protect your workflow operations appropriately.  If you really do need these files stored
 in both places (for example, in cases where you need to make the files available immediately, and only push to AWS in
@@ -129,13 +135,13 @@ used.  Of further note, if you retract after publication to AWS then your workfl
 To summarize, this table presents a subset of the various situations that are possible
 
 |Workflow Operations|Files present in the Media Module|Files present in AWS|Files served from|
-|--|--|--|--|
+|---|---|---|---|
 |publish-engage | Yes | No | Opencast Media Module |
-|publish-aws| No | Yes | AWS |
-|publish-engage, publish-aws| Yes | Yes | AWS |
-|publish-aws, publish-engage| Yes | Yes | Opencast Media Module|
-|publish-engage, retract-engage, publish-aws | Temporary | Yes | AWS |
-|publish-engage, publish-aws, retract-engage | No | Yes | Not available |
+|publish-engage-aws| No | Yes | AWS |
+|publish-engage, publish-engage-aws| Yes | Yes | AWS |
+|publish-engage-aws, publish-engage| Yes | Yes | Opencast Media Module|
+|publish-engage, retract-engage, publish-engage-aws | Temporary | Yes | AWS |
+|publish-engage, publish-engage-aws, retract-engage | No | Yes | Not available |
 
 Migrating to S3 Distribution with Pre-Existing Data
 ---------------------------------------------------

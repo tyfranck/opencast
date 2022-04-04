@@ -63,9 +63,6 @@ import org.opencastproject.workspace.api.Workspace;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpStatus;
-import org.apache.http.auth.AuthScope;
-import org.apache.http.auth.UsernamePasswordCredentials;
-import org.apache.http.client.CredentialsProvider;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
@@ -74,7 +71,6 @@ import org.apache.http.entity.ContentType;
 import org.apache.http.entity.mime.HttpMultipartMode;
 import org.apache.http.entity.mime.MultipartEntityBuilder;
 import org.apache.http.entity.mime.content.FileBody;
-import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.util.EntityUtils;
@@ -82,6 +78,10 @@ import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
 import org.osgi.service.component.ComponentContext;
+import org.osgi.service.component.annotations.Activate;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Deactivate;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -98,6 +98,14 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+@Component(
+    immediate = true,
+    service = { TranscriptionService.class,AmberscriptTranscriptionService.class },
+    property = {
+        "service.description=AmberScript Transcription Service",
+        "provider=amberscript"
+    }
+)
 public class AmberscriptTranscriptionService extends AbstractJobProducer implements TranscriptionService {
 
   private static final Logger logger = LoggerFactory.getLogger(AmberscriptTranscriptionService.class);
@@ -163,6 +171,7 @@ public class AmberscriptTranscriptionService extends AbstractJobProducer impleme
     super(JOB_TYPE);
   }
 
+  @Activate
   public void activate(ComponentContext cc) {
 
     Option<Boolean> enabledOpt = OsgiUtil.getOptCfgAsBoolean(cc.getProperties(), ENABLED_CONFIG);
@@ -247,9 +256,10 @@ public class AmberscriptTranscriptionService extends AbstractJobProducer impleme
 
     scheduledExecutor.scheduleWithFixedDelay(new ResultsFileCleanup(), 1, 1, TimeUnit.DAYS);
 
-   logger.info("Activated.");
+    logger.info("Activated.");
   }
 
+  @Deactivate
   public void deactivate(ComponentContext cc) {
     if (scheduledExecutor != null) {
       scheduledExecutor.shutdown();
@@ -266,7 +276,8 @@ public class AmberscriptTranscriptionService extends AbstractJobProducer impleme
     return startTranscription(mpId, track, language, getAmberscriptJobType());
   }
 
-  public Job startTranscription(String mpId, Track track, String language, String jobtype) throws TranscriptionServiceException {
+  public Job startTranscription(String mpId, Track track, String language, String jobtype)
+          throws TranscriptionServiceException {
     if (StringUtils.isBlank(language)) {
       language = getLanguage();
     }
@@ -296,12 +307,12 @@ public class AmberscriptTranscriptionService extends AbstractJobProducer impleme
 
   private void transcriptionDone(String mpId, String jobId) {
     try {
-        logger.info("Transcription done for mpId '{}'.", mpId);
-        if (getAndSaveJobResult(jobId)) {
-          database.updateJobControl(jobId, TranscriptionJobControl.Status.TranscriptionComplete.name());
-        } else {
-          logger.debug("Unable to get and save the transcription result for mpId '{}'.", mpId);
-        }
+      logger.info("Transcription done for mpId '{}'.", mpId);
+      if (getAndSaveJobResult(jobId)) {
+        database.updateJobControl(jobId, TranscriptionJobControl.Status.TranscriptionComplete.name());
+      } else {
+        logger.debug("Unable to get and save the transcription result for mpId '{}'.", mpId);
+      }
     } catch (IOException e) {
       logger.warn("Could not save transcription results file for mpId '{}': {}", mpId, e.toString());
     } catch (TranscriptionServiceException e) {
@@ -361,21 +372,11 @@ public class AmberscriptTranscriptionService extends AbstractJobProducer impleme
     return result;
   }
 
-  void createRecognitionsJob(String mpId, Track track, String languageCode, String jobtype) throws TranscriptionServiceException, IOException {
-    CredentialsProvider credentialsProvider = new BasicCredentialsProvider();
-    credentialsProvider.setCredentials(AuthScope.ANY,
-      new UsernamePasswordCredentials(clientKey, ""));
-
-    // Timeout 3 hours (needs to include the time for the remote service to fetch the media URL before sending final response)
-    RequestConfig config = RequestConfig.custom()
-     .setConnectTimeout(CONNECTION_TIMEOUT)
-     .setSocketTimeout(3 * 3600 * 1000).build();
-
-    CloseableHttpClient httpClient = HttpClientBuilder.create()
-     .setDefaultCredentialsProvider(credentialsProvider)
-     .setDefaultRequestConfig(config)
-     .build();
-
+  void createRecognitionsJob(String mpId, Track track, String languageCode, String jobtype)
+          throws TranscriptionServiceException, IOException {
+    // Timeout 3 hours (needs to include the time for the remote service to
+    // fetch the media URL before sending final response)
+    CloseableHttpClient httpClient = makeHttpClient(CONNECTION_TIMEOUT, 3 * 3600 * 1000, CONNECTION_TIMEOUT);
     CloseableHttpResponse response = null;
 
     String submitUrl = BASE_URL + "/jobs/upload-media?transcriptionType=transcription&jobType="
@@ -583,9 +584,9 @@ public class AmberscriptTranscriptionService extends AbstractJobProducer impleme
         workspace.get(uri);
         logger.info("Found captions at URI: {}", uri);
       } catch (Exception e) {
-          logger.info("Results not saved: getting from service for jobId {}", jobId);
-          // Not saved yet so call the transcription service to get the results
-          checkJobResults(jobId);
+        logger.info("Results not saved: getting from service for jobId {}", jobId);
+        // Not saved yet so call the transcription service to get the results
+        checkJobResults(jobId);
       }
       MediaPackageElementBuilder builder = MediaPackageElementBuilderFactory.newInstance().newElementBuilder();
       logger.debug("Returning MPE with results file URI: {}", uri);
@@ -613,18 +614,32 @@ public class AmberscriptTranscriptionService extends AbstractJobProducer impleme
     return "Unknown";
   }
 
+  /**
+   * Creates a closable http client with default configuration.
+   *
+   * @return closable http client
+   */
   protected CloseableHttpClient makeHttpClient() {
+    return makeHttpClient(CONNECTION_TIMEOUT, SOCKET_TIMEOUT, CONNECTION_TIMEOUT);
+  }
 
-    CredentialsProvider credentialsProvider = new BasicCredentialsProvider();
-
-    RequestConfig reqConfig = RequestConfig.custom().setConnectTimeout(CONNECTION_TIMEOUT)
-            .setSocketTimeout(SOCKET_TIMEOUT).setConnectionRequestTimeout(CONNECTION_TIMEOUT).build();
-
+  /**
+   * Creates a closable http client.
+   *
+   * @param conectionTimeout http connection timeout value in milliseconds
+   * @param socketTimeout http socket timeout value in milliseconds
+   * @param connectionRequestTimeout http connection request timeout value in milliseconds
+   * @return
+   */
+  protected CloseableHttpClient makeHttpClient(int conectionTimeout, int socketTimeout, int connectionRequestTimeout) {
+    RequestConfig reqConfig = RequestConfig.custom().setConnectTimeout(conectionTimeout)
+        .setSocketTimeout(socketTimeout)
+        .setConnectionRequestTimeout(connectionRequestTimeout)
+        .build();
     CloseableHttpClient httpClient = HttpClientBuilder.create()
-     .setDefaultCredentialsProvider(credentialsProvider)
-     .setDefaultRequestConfig(reqConfig)
-     .build();
-
+        .useSystemProperties()
+        .setDefaultRequestConfig(reqConfig)
+        .build();
     return httpClient;
   }
 
@@ -642,38 +657,47 @@ public class AmberscriptTranscriptionService extends AbstractJobProducer impleme
     return PathSupport.toSafeName(jobId + "." + extension);
   }
 
+  @Reference
   public void setServiceRegistry(ServiceRegistry serviceRegistry) {
     this.serviceRegistry = serviceRegistry;
   }
 
+  @Reference
   public void setSecurityService(SecurityService securityService) {
     this.securityService = securityService;
   }
 
+  @Reference
   public void setUserDirectoryService(UserDirectoryService userDirectoryService) {
     this.userDirectoryService = userDirectoryService;
   }
 
+  @Reference
   public void setOrganizationDirectoryService(OrganizationDirectoryService organizationDirectoryService) {
     this.organizationDirectoryService = organizationDirectoryService;
   }
 
+  @Reference
   public void setWorkspace(Workspace ws) {
     this.workspace = ws;
   }
 
+  @Reference
   public void setWorkingFileRepository(WorkingFileRepository wfr) {
     this.wfr = wfr;
   }
 
+  @Reference
   public void setDatabase(TranscriptionDatabase service) {
     this.database = service;
   }
 
+  @Reference
   public void setAssetManager(AssetManager service) {
     this.assetManager = service;
   }
 
+  @Reference
   public void setWorkflowService(WorkflowService service) {
     this.workflowService = service;
   }
@@ -759,7 +783,7 @@ public class AmberscriptTranscriptionService extends AbstractJobProducer impleme
                 } catch (TranscriptionDatabaseException ex) {
                   logger.warn("Could not cancel job '{}'.", jobId);
                 }
-            }
+              }
             } else {
               continue; // Not time to check yet
             }

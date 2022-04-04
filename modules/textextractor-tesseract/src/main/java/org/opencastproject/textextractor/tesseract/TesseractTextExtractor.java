@@ -32,6 +32,7 @@ import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.osgi.service.cm.ManagedService;
 import org.osgi.service.component.ComponentContext;
+import org.osgi.service.component.annotations.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,6 +49,13 @@ import java.util.List;
 /**
  * Commandline wrapper around tesseract' <code>tesseract</code> command.
  */
+@Component(
+    immediate = true,
+    service = { TextExtractor.class,ManagedService.class },
+    property = {
+        "service.description=Tesseract Text Extractor"
+    }
+)
 public class TesseractTextExtractor implements TextExtractor, ManagedService {
 
   /** The logging facility */
@@ -58,13 +66,13 @@ public class TesseractTextExtractor implements TextExtractor, ManagedService {
 
   /** Configuration property that defines the path to the tesseract binary */
   public static final String TESSERACT_BINARY_CONFIG_KEY =
-    "org.opencastproject.textanalyzer.tesseract.path";
+      "org.opencastproject.textanalyzer.tesseract.path";
 
   /** Configuration property that defines additional tesseract options like the
    * language or the pagesegmode to use. This is just appended to the command
    * line when tesseract is called. */
   public static final String TESSERACT_OPTS_CONFIG_KEY =
-    "org.opencastproject.textanalyzer.tesseract.options";
+      "org.opencastproject.textanalyzer.tesseract.options";
 
   /** Binary of the tesseract command */
   private String binary;
@@ -121,8 +129,9 @@ public class TesseractTextExtractor implements TextExtractor, ManagedService {
    */
   @Override
   public List<String> extract(File image) throws TextExtractorException {
-    if (binary == null)
+    if (binary == null) {
       throw new IllegalStateException("Binary is not set");
+    }
 
     File outputFile = null;
     File outputFileBase = new File(image.getParentFile(), FilenameUtils.getBaseName(image.getName()));

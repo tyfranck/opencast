@@ -32,14 +32,18 @@ import org.opencastproject.mediapackage.MediaPackage;
 import org.opencastproject.mediapackage.MediaPackageElementFlavor;
 import org.opencastproject.util.NotFoundException;
 import org.opencastproject.workflow.api.AbstractWorkflowOperationHandler;
+import org.opencastproject.workflow.api.ConfiguredTagsAndFlavors;
 import org.opencastproject.workflow.api.WorkflowInstance;
 import org.opencastproject.workflow.api.WorkflowOperationException;
+import org.opencastproject.workflow.api.WorkflowOperationHandler;
 import org.opencastproject.workflow.api.WorkflowOperationResult;
 import org.opencastproject.workspace.api.Workspace;
 
 import com.entwinemedia.fn.data.Opt;
 import com.entwinemedia.fn.fns.Strings;
 
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,6 +60,14 @@ import java.util.Set;
 /**
  * Workflow operation handler for importing workflow properties.
  */
+@Component(
+    immediate = true,
+    service = WorkflowOperationHandler.class,
+    property = {
+        "service.description=Import Workflow Properties Workflow Operation Handler",
+        "workflow.operation=import-wf-properties"
+    }
+)
 public class ImportWorkflowPropertiesWOH extends AbstractWorkflowOperationHandler {
 
   /* Configuration options */
@@ -68,6 +80,7 @@ public class ImportWorkflowPropertiesWOH extends AbstractWorkflowOperationHandle
   private Workspace workspace;
 
   /** OSGi DI */
+  @Reference
   void setWorkspace(Workspace workspace) {
     this.workspace = workspace;
   }
@@ -75,9 +88,11 @@ public class ImportWorkflowPropertiesWOH extends AbstractWorkflowOperationHandle
   @Override
   public WorkflowOperationResult start(WorkflowInstance wi, JobContext context) throws WorkflowOperationException {
     logger.info("Start importing workflow properties for workflow {}", wi);
-    final String sourceFlavor = getConfig(wi, SOURCE_FLAVOR_PROPERTY);
+    ConfiguredTagsAndFlavors tagsAndFlavors = getTagsAndFlavors(wi,
+        Configuration.none, Configuration.one, Configuration.none, Configuration.none);
+    final MediaPackageElementFlavor sourceFlavor = tagsAndFlavors.getSingleSrcFlavor();
     Opt<Attachment> propertiesElem = loadPropertiesElementFromMediaPackage(
-            MediaPackageElementFlavor.parseFlavor(sourceFlavor), wi);
+            sourceFlavor, wi);
     if (propertiesElem.isSome()) {
       Properties properties = loadPropertiesFromXml(workspace, propertiesElem.get().getURI());
       final Set<String> keys = $(getOptConfig(wi, KEYS_PROPERTY)).bind(Strings.splitCsv).toSet();

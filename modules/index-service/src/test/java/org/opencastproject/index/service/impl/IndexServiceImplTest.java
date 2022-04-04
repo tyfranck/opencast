@@ -27,18 +27,18 @@ import static org.junit.Assert.assertTrue;
 import org.opencastproject.assetmanager.api.AssetManager;
 import org.opencastproject.assetmanager.api.Property;
 import org.opencastproject.capture.admin.api.CaptureAgentStateService;
+import org.opencastproject.elasticsearch.api.SearchIndexException;
+import org.opencastproject.elasticsearch.api.SearchQuery;
+import org.opencastproject.elasticsearch.api.SearchResult;
+import org.opencastproject.elasticsearch.impl.SearchResultImpl;
+import org.opencastproject.elasticsearch.impl.SearchResultItemImpl;
+import org.opencastproject.elasticsearch.index.ElasticsearchIndex;
+import org.opencastproject.elasticsearch.index.objects.event.Event;
+import org.opencastproject.elasticsearch.index.objects.event.EventSearchQuery;
 import org.opencastproject.index.service.catalog.adapter.events.CommonEventCatalogUIAdapter;
 import org.opencastproject.index.service.exception.IndexServiceException;
-import org.opencastproject.index.service.impl.index.AbstractSearchIndex;
-import org.opencastproject.index.service.impl.index.event.Event;
-import org.opencastproject.index.service.impl.index.event.EventSearchQuery;
 import org.opencastproject.ingest.api.IngestException;
 import org.opencastproject.ingest.api.IngestService;
-import org.opencastproject.matterhorn.search.SearchIndexException;
-import org.opencastproject.matterhorn.search.SearchQuery;
-import org.opencastproject.matterhorn.search.SearchResult;
-import org.opencastproject.matterhorn.search.impl.SearchResultImpl;
-import org.opencastproject.matterhorn.search.impl.SearchResultItemImpl;
 import org.opencastproject.mediapackage.Attachment;
 import org.opencastproject.mediapackage.Catalog;
 import org.opencastproject.mediapackage.CatalogImpl;
@@ -382,7 +382,6 @@ public class IndexServiceImplTest {
     IndexServiceImpl indexServiceImpl = new IndexServiceImpl();
     indexServiceImpl.setAuthorizationService(setupAuthorizationService(mediapackage));
     indexServiceImpl.setIngestService(ingestService);
-    indexServiceImpl.setCommonEventCatalogUIAdapter(commonEventCatalogUIAdapter);
     indexServiceImpl.addCatalogUIAdapter(commonEventCatalogUIAdapter);
     indexServiceImpl.setUserDirectoryService(noUsersUserDirectoryService);
     indexServiceImpl.setSecurityService(securityService);
@@ -469,7 +468,6 @@ public class IndexServiceImplTest {
     IndexServiceImpl indexServiceImpl = new IndexServiceImpl();
     indexServiceImpl.setAuthorizationService(setupAuthorizationService(mediapackage));
     indexServiceImpl.setIngestService(ingestService);
-    indexServiceImpl.setCommonEventCatalogUIAdapter(commonEventCatalogUIAdapter);
     indexServiceImpl.addCatalogUIAdapter(commonEventCatalogUIAdapter);
     indexServiceImpl.setUserDirectoryService(noUsersUserDirectoryService);
     indexServiceImpl.setSecurityService(securityService);
@@ -562,7 +560,6 @@ public class IndexServiceImplTest {
     IndexServiceImpl indexServiceImpl = new IndexServiceImpl();
     indexServiceImpl.setAuthorizationService(setupAuthorizationService(mediapackage));
     indexServiceImpl.setIngestService(ingestService);
-    indexServiceImpl.setCommonEventCatalogUIAdapter(commonEventCatalogUIAdapter);
     indexServiceImpl.addCatalogUIAdapter(commonEventCatalogUIAdapter);
     indexServiceImpl.setSecurityService(securityService);
     indexServiceImpl.setUserDirectoryService(noUsersUserDirectoryService);
@@ -720,7 +717,6 @@ public class IndexServiceImplTest {
     IndexServiceImpl indexServiceImpl = new IndexServiceImpl();
     indexServiceImpl.setAuthorizationService(setupAuthorizationService(mediapackage));
     indexServiceImpl.setIngestService(setupIngestService(mediapackage, Capture.<InputStream> newInstance()));
-    indexServiceImpl.setCommonEventCatalogUIAdapter(commonEventCatalogUIAdapter);
     indexServiceImpl.addCatalogUIAdapter(commonEventCatalogUIAdapter);
     indexServiceImpl.setSecurityService(securityService);
     indexServiceImpl.setUserDirectoryService(noUsersUserDirectoryService);
@@ -772,7 +768,7 @@ public class IndexServiceImplTest {
 
     SearchResult<Event> result = new SearchResultImpl<>(query, 0, 0);
 
-    AbstractSearchIndex abstractIndex = EasyMock.createMock(AbstractSearchIndex.class);
+    ElasticsearchIndex abstractIndex = EasyMock.createMock(ElasticsearchIndex.class);
     EasyMock.expect(abstractIndex.getByQuery(EasyMock.anyObject(EventSearchQuery.class))).andReturn(result);
     EasyMock.replay(abstractIndex);
 
@@ -852,7 +848,7 @@ public class IndexServiceImplTest {
     SearchResultImpl<Event> searchResult = new SearchResultImpl<>(query, 0, 0);
     searchResult.addResultItem(searchResultItem);
     SecurityService securityService = setupSecurityService(username, org);
-    AbstractSearchIndex index = EasyMock.createMock(AbstractSearchIndex.class);
+    ElasticsearchIndex index = EasyMock.createMock(ElasticsearchIndex.class);
     MediaPackage mp = MediaPackageBuilderFactory.newInstance().newMediaPackageBuilder()
             .loadFromXml(getClass().getResourceAsStream("/events/update-event-mp.xml"));
     EasyMock.expect(index.getByQuery(EasyMock.anyObject(EventSearchQuery.class))).andReturn(searchResult);
@@ -884,7 +880,6 @@ public class IndexServiceImplTest {
     IndexServiceImpl indexService = new IndexServiceImpl();
     indexService.setSecurityService(securityService);
     indexService.setSchedulerService(schedulerService);
-    indexService.setCommonEventCatalogUIAdapter(commonEventCatalogUIAdapter);
     indexService.addCatalogUIAdapter(commonEventCatalogUIAdapter);
     indexService.setSeriesService(seriesService);
     indexService.setWorkspace(workspace);
@@ -1055,7 +1050,7 @@ public class IndexServiceImplTest {
     IndexServiceImpl indexServiceImpl = new IndexServiceImpl();
     CommonEventCatalogUIAdapter commonEventCatalogUIAdapter = new CommonEventCatalogUIAdapter();
     commonEventCatalogUIAdapter.updated(properties);
-    indexServiceImpl.setCommonEventCatalogUIAdapter(commonEventCatalogUIAdapter);
+    indexServiceImpl.addCatalogUIAdapter(commonEventCatalogUIAdapter);
     indexServiceImpl.setUserDirectoryService(userDirectoryService);
     indexServiceImpl.setSecurityService(securityService);
 

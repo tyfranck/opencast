@@ -33,6 +33,8 @@ import org.opencastproject.util.doc.rest.RestService;
 
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeConstants;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 
 import javax.ws.rs.DefaultValue;
 import javax.ws.rs.GET;
@@ -43,12 +45,29 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
 @Path("/")
-@RestService(name = "urlsigning", title = "URL Signing Endpoint", notes = "This is a testing endpoint to play around with the URL Signing Service", abstractText = "")
+@RestService(
+    name = "urlsigning",
+    title = "URL Signing Endpoint",
+    notes = "This is a testing endpoint to play around with the URL Signing Service",
+    abstractText = ""
+)
+@Component(
+    immediate = true,
+    service = UrlSigningEndpoint.class,
+    property = {
+        "service.description=Url Signing REST Endpoint",
+        "opencast.service.type=org.opencastproject.security.urlsigning.testing",
+        "opencast.service.path=/signing",
+        "opencast.service.publish=false",
+        "opencast.service.jobproducer=false"
+    }
+)
 public class UrlSigningEndpoint {
 
   private UrlSigningService signingService;
 
   /** OSGi DI callback */
+  @Reference
   void setUrlSigningService(UrlSigningService signingService) {
     this.signingService = signingService;
   }
@@ -56,25 +75,64 @@ public class UrlSigningEndpoint {
   @GET
   @Produces({ MediaType.TEXT_PLAIN })
   @Path("accepts")
-  @RestQuery(name = "accepts", description = "Checks if the signing service accepts to sign the URL", restParameters = { @RestParameter(name = "baseUrl", isRequired = true, description = "The URL to sign", type = STRING) }, responses = { @RestResponse(description = "'true' or 'false'", responseCode = 200) }, returnDescription = "")
+  @RestQuery(
+      name = "accepts",
+      description = "Checks if the signing service accepts to sign the URL",
+      restParameters = {
+          @RestParameter(name = "baseUrl", isRequired = true, description = "The URL to sign", type = STRING)
+      },
+      responses = {
+          @RestResponse(description = "'true' or 'false'", responseCode = 200)
+      },
+      returnDescription = ""
+  )
   public Response accepts(@QueryParam("baseUrl") final String baseUrl) {
-    if (signingService.accepts(baseUrl))
+    if (signingService.accepts(baseUrl)) {
       return Response.ok(Boolean.TRUE.toString()).build();
-    else
+    } else {
       return Response.ok(Boolean.FALSE.toString()).build();
+    }
   }
 
   @GET
   @Produces({ MediaType.TEXT_PLAIN })
   @Path("sign")
-  @RestQuery(name = "sign", description = "Return a signed URL", restParameters = {
+  @RestQuery(
+      name = "sign",
+      description = "Return a signed URL",
+      restParameters = {
           @RestParameter(name = "baseUrl", isRequired = true, description = "The URL to sign", type = STRING),
-          @RestParameter(defaultValue = "0", description = "The UNIX epoch time until when a signed URL should remain valid", isRequired = true, name = "validUntil", type = RestParameter.Type.INTEGER),
-          @RestParameter(defaultValue = "0", description = "The UNIX epoch time from when a signed URL should become valid", isRequired = false, name = "validFrom", type = RestParameter.Type.INTEGER),
-          @RestParameter(defaultValue = "", description = "The IP addresse of the user that is allowed to access the resource", type = STRING, isRequired = false, name = "ipAddr") }, responses = { @RestResponse(description = "A URL", responseCode = 200) }, returnDescription = "")
-  public Response sign(@QueryParam("baseUrl") final String baseUrl, @QueryParam("validUntil") final long validUntil,
-          @QueryParam("validFrom") @DefaultValue("0") long validFrom,
-          @QueryParam("ipAddr") @DefaultValue("") String ipAddr) {
+          @RestParameter(
+              name = "validUntil",
+              isRequired = true,
+              type = RestParameter.Type.INTEGER,
+              defaultValue = "0",
+              description = "The UNIX epoch time until when a signed URL should remain valid"
+          ),
+          @RestParameter(
+              name = "validFrom",
+              isRequired = false,
+              type = RestParameter.Type.INTEGER,
+              defaultValue = "0",
+              description = "The UNIX epoch time from when a signed URL should become valid"
+          ),
+          @RestParameter(
+              name = "ipAddr",
+              isRequired = false,
+              type = STRING,
+              defaultValue = "",
+              description = "The IP addresse of the user that is allowed to access the resource"
+          )
+      },
+      responses = { @RestResponse(description = "A URL", responseCode = 200) },
+      returnDescription = ""
+  )
+  public Response sign(
+      @QueryParam("baseUrl") final String baseUrl,
+      @QueryParam("validUntil") final long validUntil,
+      @QueryParam("validFrom") @DefaultValue("0") long validFrom,
+      @QueryParam("ipAddr") @DefaultValue("") String ipAddr
+  ) {
     try {
       if (signingService.accepts(baseUrl)) {
         final String signedUrl = signingService.sign(baseUrl, new DateTime(validUntil

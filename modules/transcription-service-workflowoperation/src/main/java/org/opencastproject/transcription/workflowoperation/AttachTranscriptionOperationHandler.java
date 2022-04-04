@@ -27,10 +27,13 @@ import org.opencastproject.mediapackage.MediaPackage;
 import org.opencastproject.mediapackage.MediaPackageElement;
 import org.opencastproject.mediapackage.MediaPackageElementFlavor;
 import org.opencastproject.mediapackage.MediaPackageElementParser;
+import org.opencastproject.serviceregistry.api.ServiceRegistry;
 import org.opencastproject.transcription.api.TranscriptionService;
 import org.opencastproject.workflow.api.AbstractWorkflowOperationHandler;
+import org.opencastproject.workflow.api.ConfiguredTagsAndFlavors;
 import org.opencastproject.workflow.api.WorkflowInstance;
 import org.opencastproject.workflow.api.WorkflowOperationException;
+import org.opencastproject.workflow.api.WorkflowOperationHandler;
 import org.opencastproject.workflow.api.WorkflowOperationInstance;
 import org.opencastproject.workflow.api.WorkflowOperationResult;
 import org.opencastproject.workflow.api.WorkflowOperationResult.Action;
@@ -38,9 +41,22 @@ import org.opencastproject.workspace.api.Workspace;
 
 import org.apache.commons.lang3.StringUtils;
 import org.osgi.service.component.ComponentContext;
+import org.osgi.service.component.annotations.Activate;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
+
+@Component(
+    immediate = true,
+    service = WorkflowOperationHandler.class,
+    property = {
+        "service.description=Attach Transcription Workflow Operation Handler",
+        "workflow.operation=attach-watson-transcription"
+    }
+)
 public class AttachTranscriptionOperationHandler extends AbstractWorkflowOperationHandler {
 
   /** The logging facility */
@@ -49,7 +65,7 @@ public class AttachTranscriptionOperationHandler extends AbstractWorkflowOperati
   /** Workflow configuration option keys */
   static final String TRANSCRIPTION_JOB_ID = "transcription-job-id";
   static final String TARGET_FLAVOR = "target-flavor";
-  static final String TARGET_TAG = "target-tag";
+  static final String TARGET_TAGS = "target-tags";
   static final String TARGET_CAPTION_FORMAT = "target-caption-format";
 
   /** The transcription service */
@@ -58,16 +74,11 @@ public class AttachTranscriptionOperationHandler extends AbstractWorkflowOperati
   private CaptionService captionService;
 
   @Override
+  @Activate
   protected void activate(ComponentContext cc) {
     super.activate(cc);
   }
 
-  /**
-   * {@inheritDoc}
-   *
-   * @see org.opencastproject.workflow.api.WorkflowOperationHandler#start(org.opencastproject.workflow.api.WorkflowInstance,
-   *      JobContext)
-   */
   @Override
   public WorkflowOperationResult start(final WorkflowInstance workflowInstance, JobContext context)
           throws WorkflowOperationException {
@@ -78,21 +89,26 @@ public class AttachTranscriptionOperationHandler extends AbstractWorkflowOperati
 
     // Get job id.
     String jobId = StringUtils.trimToNull(operation.getConfiguration(TRANSCRIPTION_JOB_ID));
-    if (jobId == null)
+    if (jobId == null) {
       throw new WorkflowOperationException(TRANSCRIPTION_JOB_ID + " missing");
+    }
 
     // Check which tags/flavors have been configured
-    String targetTagOption = StringUtils.trimToNull(operation.getConfiguration(TARGET_TAG));
-    String targetFlavorOption = StringUtils.trimToNull(operation.getConfiguration(TARGET_FLAVOR));
+    ConfiguredTagsAndFlavors tagsAndFlavors = getTagsAndFlavors(
+        workflowInstance, Configuration.none, Configuration.none, Configuration.many, Configuration.many);
+    List<String> targetTagOption = tagsAndFlavors.getTargetTags();
+    List<MediaPackageElementFlavor> targetFlavorOption = tagsAndFlavors.getTargetFlavors();
     String captionFormatOption = StringUtils.trimToNull(operation.getConfiguration(TARGET_CAPTION_FORMAT));
     // Target flavor is mandatory if target-caption-format was NOT informed and no conversion is done
-    if (targetFlavorOption == null && captionFormatOption == null)
+    if (targetFlavorOption.isEmpty() && captionFormatOption == null) {
       throw new WorkflowOperationException(TARGET_FLAVOR + " missing");
+    }
     // Target flavor is optional if target-caption-format was informed because the default flavor
     // will be "captions/<format>". If informed, will override the default.
     MediaPackageElementFlavor flavor = null;
-    if (targetFlavorOption != null)
-      flavor = MediaPackageElementFlavor.parseFlavor(targetFlavorOption);
+    if (!targetFlavorOption.isEmpty()) {
+      flavor = targetFlavorOption.get(0);
+    }
 
     try {
       // Get transcription file from the service
@@ -109,15 +125,13 @@ public class AttachTranscriptionOperationHandler extends AbstractWorkflowOperati
       }
 
       // Set the target flavor if informed
-      if (flavor != null)
+      if (flavor != null) {
         transcription.setFlavor(flavor);
+      }
 
       // Add tags
-      if (targetTagOption != null) {
-        for (String tag : asList(targetTagOption)) {
-          if (StringUtils.trimToNull(tag) != null)
-            transcription.addTag(tag);
-        }
+      for (String tag : targetTagOption) {
+        transcription.addTag(tag);
       }
 
       // Add to media package
@@ -134,16 +148,26 @@ public class AttachTranscriptionOperationHandler extends AbstractWorkflowOperati
     return createResult(mediaPackage, Action.CONTINUE);
   }
 
+  @Reference(target = "(provider=ibm.watson)")
   public void setTranscriptionService(TranscriptionService service) {
     this.service = service;
   }
 
+  @Reference
   public void setWorkspace(Workspace service) {
     this.workspace = service;
   }
 
+  @Reference
   public void setCaptionService(CaptionService service) {
     this.captionService = service;
   }
 
+  @Reference
+  @Override
+  public void setServiceRegistry(ServiceRegistry serviceRegistry) {
+    super.setServiceRegistry(serviceRegistry);
+  }
+
 }
+

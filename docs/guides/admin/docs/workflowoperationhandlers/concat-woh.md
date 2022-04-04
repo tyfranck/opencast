@@ -18,7 +18,7 @@ General Mode
 
 This will re-encode the videos first to the same format (framerate/timebase/codec, etc) before concatenation.
 
-{% dot concat.svg
+```graphviz dot concat.png
 
 /**
 Input                                                   Output
@@ -68,7 +68,7 @@ digraph G {
 
   concat -> o_intro [lhead=cluster_output];
 }
-%}
+```
 
 The internal FFmpeg command for re-encoding is using the following filters: fps, scale, pad and setdar for scaling all
 videos to a similar size including letterboxing, aevalsrc for creating silent audio streams and of course the concat for
@@ -177,26 +177,6 @@ Example of a concat operation in a workflow definition.
     <configuration key="encoding-profile">concat</configuration>
     <configuration key="output-resolution">1920x1080</configuration>
     <configuration key="output-framerate">part-1</configuration>
-  </configurations>
-</operation>
-```
-
-Example of a lossless concat operation for videos with identical formats in a workflow definition.
-
-```xml
-<!-- Concatenate chunked video from camera -->
-<operation
-  id="concat"
-  fail-on-error="true"
-  exception-handler-workflow="error"
-  description="Concatenate the generated videos.">
-  <configurations>
-    <configuration key="source-flavor-numbered-files">multipart/chunkedsource</configuration>
-    <configuration key="target-flavor">presenter/concat</configuration>
-    <configuration key="target-tags">engage-download,engage-streaming</configuration>
-    <!-- do not encode before concatenation -->
-    <configuration key="same-codec">true</configuration>
-    <configuration key="encoding-profile">concat-samecodec</configuration>
   </configurations>
 </operation>
 ```

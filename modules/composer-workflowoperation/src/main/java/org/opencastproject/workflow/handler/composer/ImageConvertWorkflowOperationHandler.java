@@ -31,11 +31,14 @@ import org.opencastproject.mediapackage.MediaPackageElementFlavor;
 import org.opencastproject.mediapackage.MediaPackageElementParser;
 import org.opencastproject.mediapackage.MediaPackageException;
 import org.opencastproject.mediapackage.selector.AttachmentSelector;
+import org.opencastproject.serviceregistry.api.ServiceRegistry;
 import org.opencastproject.util.NotFoundException;
 import org.opencastproject.util.PathSupport;
 import org.opencastproject.workflow.api.AbstractWorkflowOperationHandler;
+import org.opencastproject.workflow.api.ConfiguredTagsAndFlavors;
 import org.opencastproject.workflow.api.WorkflowInstance;
 import org.opencastproject.workflow.api.WorkflowOperationException;
+import org.opencastproject.workflow.api.WorkflowOperationHandler;
 import org.opencastproject.workflow.api.WorkflowOperationInstance;
 import org.opencastproject.workflow.api.WorkflowOperationResult;
 import org.opencastproject.workspace.api.Workspace;
@@ -43,6 +46,8 @@ import org.opencastproject.workspace.api.Workspace;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,22 +59,18 @@ import java.util.Hashtable;
 import java.util.List;
 import java.util.Map;
 
+@Component(
+    immediate = true,
+    service = WorkflowOperationHandler.class,
+    property = {
+        "service.description=Image Convert Workflow Operation Handler",
+        "workflow.operation=image-convert"
+    }
+)
 public class ImageConvertWorkflowOperationHandler extends AbstractWorkflowOperationHandler {
 
   private static final Logger logger = LoggerFactory.getLogger(ImageConvertWorkflowOperationHandler.class);
 
-  /** Configuration key for the source flavor */
-  private static final String CONFIG_KEY_SOURCE_FLAVOR = "source-flavor";
-  /** Configuration key for source flavors (comma seperated values) */
-  private static final String CONFIG_KEY_SOURCE_FLAVORS = "source-flavors";
-  /** Configuration key for source tags (comma separated values) */
-  private static final String CONFIG_KEY_SOURCE_TAGS = "source-tags";
-  /** Configuration key for the target flavor */
-  private static final String CONFIG_KEY_TARGET_FLAVOR = "target-flavor";
-  /** Configuration key for target flavor. The value of this configuration will be used, if target-flavor isn't set */
-  private static final String CONFIG_KEY_TARGET_FLAVORS = "target-flavors";
-  /** Configuration key for target tags */
-  private static final String CONFIG_KEY_TARGET_TAGS = "target-tags";
   /** Configuration key for encoding profile */
   private static final String CONFIG_KEY_ENCODING_PROFILE = "encoding-profile";
   /** Configuration key for encoding profile. The value of this configuration will be used,
@@ -92,6 +93,7 @@ public class ImageConvertWorkflowOperationHandler extends AbstractWorkflowOperat
    * @param composerService
    *          the composer service
    */
+  @Reference
   protected void setComposerService(ComposerService composerService) {
     this.composerService = composerService;
   }
@@ -102,6 +104,7 @@ public class ImageConvertWorkflowOperationHandler extends AbstractWorkflowOperat
    * @param workspace
    *          an instance of the workspace
    */
+  @Reference
   public void setWorkspace(Workspace workspace) {
     this.workspace = workspace;
   }
@@ -109,43 +112,41 @@ public class ImageConvertWorkflowOperationHandler extends AbstractWorkflowOperat
   @Override
   public WorkflowOperationResult start(WorkflowInstance workflowInstance, JobContext context) throws WorkflowOperationException {
     WorkflowOperationInstance operation = workflowInstance.getCurrentOperation();
-    String sourceFlavorOption = StringUtils.trimToNull(operation.getConfiguration(CONFIG_KEY_SOURCE_FLAVOR));
-    String sourceFlavorsOption = StringUtils.trimToNull(operation.getConfiguration(CONFIG_KEY_SOURCE_FLAVORS));
-    String sourceTagsOption = StringUtils.trimToNull(operation.getConfiguration(CONFIG_KEY_SOURCE_TAGS));
-    String targetFlavorOption = StringUtils.trimToNull(operation.getConfiguration(CONFIG_KEY_TARGET_FLAVOR));
-    if (targetFlavorOption == null)
-      targetFlavorOption = StringUtils.trimToNull(operation.getConfiguration(CONFIG_KEY_TARGET_FLAVORS));
-    String targetTagsOption = StringUtils.trimToNull(operation.getConfiguration(CONFIG_KEY_TARGET_TAGS));
+    // Check which tags have been configured
+    ConfiguredTagsAndFlavors tagsAndFlavors = getTagsAndFlavors(workflowInstance,
+        Configuration.many, Configuration.many, Configuration.many, Configuration.many);
+    List<MediaPackageElementFlavor> sourceFlavorsOption = tagsAndFlavors.getSrcFlavors();
+    List<String> sourceTagsOption = tagsAndFlavors.getSrcTags();
+    List<MediaPackageElementFlavor> targetFlavorsOption = tagsAndFlavors.getTargetFlavors();
+    List<String> targetTagsOption = tagsAndFlavors.getTargetTags();
+
     String encodingProfileOption = StringUtils.trimToNull(operation.getConfiguration(CONFIG_KEY_ENCODING_PROFILE));
     if (encodingProfileOption == null)
       encodingProfileOption = StringUtils.trimToNull(operation.getConfiguration(CONFIG_KEY_ENCODING_PROFILES));
     String tagsAndFlavorsOption = StringUtils.trimToNull(operation.getConfiguration(CONFIG_KEY_TAGS_AND_FLAVORS));
-    boolean tagsAndFlavors = BooleanUtils.toBoolean(tagsAndFlavorsOption);
+    boolean tagsAndFlavorsBool = BooleanUtils.toBoolean(tagsAndFlavorsOption);
 
 
     MediaPackage mediaPackage = workflowInstance.getMediaPackage();
 
     // Make sure either one of tags or flavors are provided
-    if (StringUtils.isBlank(sourceFlavorOption) && StringUtils.isBlank(sourceFlavorsOption)
-            && StringUtils.isBlank(sourceTagsOption)) {
+    if (sourceFlavorsOption.isEmpty() && sourceTagsOption.isEmpty()) {
       logger.info("No source tags or flavors have been specified, not matching anything");
       return createResult(mediaPackage, WorkflowOperationResult.Action.CONTINUE);
     }
 
     // Target flavor
     MediaPackageElementFlavor targetFlavor = null;
-    if (StringUtils.isNotBlank(targetFlavorOption)) {
-      try {
-        targetFlavor = MediaPackageElementFlavor.parseFlavor(targetFlavorOption);
-      } catch (IllegalArgumentException e) {
-        throw new WorkflowOperationException("Target flavor '" + targetFlavorOption + "' is malformed");
-      }
+    if (!targetFlavorsOption.isEmpty()) {
+      targetFlavor = targetFlavorsOption.get(0);
+    } else {
+      throw new WorkflowOperationException("No target flavor specified");
     }
     // check target-tags configuration
     List<String> fixedTags = new ArrayList<>();
     List<String> additionalTags = new ArrayList<>();
     List<String> removingTags = new ArrayList<>();
-    for (String targetTag : asList(targetTagsOption)) {
+    for (String targetTag : targetTagsOption) {
       if (!StringUtils.startsWithAny(targetTag, "+", "-")) {
         if (additionalTags.size() > 0 || removingTags.size() > 0) {
           logger.warn("You may not mix fixed tags and tag changes. "
@@ -174,18 +175,15 @@ public class ImageConvertWorkflowOperationHandler extends AbstractWorkflowOperat
       throw new WorkflowOperationException("No encoding profile was specified");
 
     AttachmentSelector attachmentSelector = new AttachmentSelector();
-    for (String sourceFlavor : asList(sourceFlavorsOption)) {
+    for (MediaPackageElementFlavor sourceFlavor : sourceFlavorsOption) {
       attachmentSelector.addFlavor(sourceFlavor);
     }
-    for (String sourceFlavor : asList(sourceFlavorOption)) {
-      attachmentSelector.addFlavor(sourceFlavor);
-    }
-    for (String sourceTag : asList(sourceTagsOption)) {
+    for (String sourceTag : sourceTagsOption) {
       attachmentSelector.addTag(sourceTag);
     }
 
     // Look for elements matching the tag
-    Collection<Attachment> sourceElements = attachmentSelector.select(mediaPackage, tagsAndFlavors);
+    Collection<Attachment> sourceElements = attachmentSelector.select(mediaPackage, tagsAndFlavorsBool);
 
     Map<Job, Attachment> jobs = new Hashtable<>();
     try {
@@ -268,4 +266,11 @@ public class ImageConvertWorkflowOperationHandler extends AbstractWorkflowOperat
       }
     }
   }
+
+  @Reference
+  @Override
+  public void setServiceRegistry(ServiceRegistry serviceRegistry) {
+    super.setServiceRegistry(serviceRegistry);
+  }
+
 }

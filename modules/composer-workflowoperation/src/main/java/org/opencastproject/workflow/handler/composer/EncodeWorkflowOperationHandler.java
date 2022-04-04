@@ -34,16 +34,21 @@ import org.opencastproject.mediapackage.MediaPackageException;
 import org.opencastproject.mediapackage.Track;
 import org.opencastproject.mediapackage.selector.AbstractMediaPackageElementSelector;
 import org.opencastproject.mediapackage.selector.TrackSelector;
+import org.opencastproject.serviceregistry.api.ServiceRegistry;
 import org.opencastproject.util.NotFoundException;
 import org.opencastproject.workflow.api.AbstractWorkflowOperationHandler;
+import org.opencastproject.workflow.api.ConfiguredTagsAndFlavors;
 import org.opencastproject.workflow.api.WorkflowInstance;
 import org.opencastproject.workflow.api.WorkflowOperationException;
+import org.opencastproject.workflow.api.WorkflowOperationHandler;
 import org.opencastproject.workflow.api.WorkflowOperationInstance;
 import org.opencastproject.workflow.api.WorkflowOperationResult;
 import org.opencastproject.workflow.api.WorkflowOperationResult.Action;
 import org.opencastproject.workspace.api.Workspace;
 
 import org.apache.commons.lang3.StringUtils;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -57,6 +62,14 @@ import java.util.Map;
 /**
  * The workflow definition for handling "compose" operations
  */
+@Component(
+    immediate = true,
+    service = WorkflowOperationHandler.class,
+    property = {
+        "service.description=Encode Workflow Operation Handler",
+        "workflow.operation=encode"
+    }
+)
 public class EncodeWorkflowOperationHandler extends AbstractWorkflowOperationHandler {
 
   /** The logging facility */
@@ -74,6 +87,7 @@ public class EncodeWorkflowOperationHandler extends AbstractWorkflowOperationHan
    * @param composerService
    *          the local composer service
    */
+  @Reference
   protected void setComposerService(ComposerService composerService) {
     this.composerService = composerService;
   }
@@ -85,6 +99,7 @@ public class EncodeWorkflowOperationHandler extends AbstractWorkflowOperationHan
    * @param workspace
    *          an instance of the workspace
    */
+  @Reference
   public void setWorkspace(Workspace workspace) {
     this.workspace = workspace;
   }
@@ -100,7 +115,7 @@ public class EncodeWorkflowOperationHandler extends AbstractWorkflowOperationHan
     logger.debug("Running parallel encoding workflow operation on workflow {}", workflowInstance.getId());
 
     try {
-      return encode(workflowInstance.getMediaPackage(), workflowInstance.getCurrentOperation());
+      return encode(workflowInstance);
     } catch (Exception e) {
       throw new WorkflowOperationException(e);
     }
@@ -109,10 +124,8 @@ public class EncodeWorkflowOperationHandler extends AbstractWorkflowOperationHan
   /**
    * Encode tracks from MediaPackage using profiles stored in properties and updates current MediaPackage.
    *
-   * @param src
-   *          The source media package
-   * @param operation
-   *          the current workflow operation
+   * @param workflowInstance
+   *          the current workflow instance
    * @return the operation result containing the updated media package
    * @throws EncoderException
    *           if encoding fails
@@ -123,47 +136,34 @@ public class EncodeWorkflowOperationHandler extends AbstractWorkflowOperationHan
    * @throws NotFoundException
    *           if the workspace doesn't contain the requested file
    */
-  private WorkflowOperationResult encode(MediaPackage src, WorkflowOperationInstance operation)
+  private WorkflowOperationResult encode(WorkflowInstance workflowInstance)
           throws EncoderException, IOException, NotFoundException, MediaPackageException, WorkflowOperationException {
+    MediaPackage src = workflowInstance.getMediaPackage();
     MediaPackage mediaPackage = (MediaPackage) src.clone();
-
+    WorkflowOperationInstance operation = workflowInstance.getCurrentOperation();
     // Check which tags have been configured
-    String sourceTagsOption = StringUtils.trimToNull(operation.getConfiguration("source-tags"));
-    String targetTagsOption = StringUtils.trimToNull(operation.getConfiguration("target-tags"));
-    String sourceFlavorOption = StringUtils.trimToNull(operation.getConfiguration("source-flavor"));
-    String sourceFlavorsOption = StringUtils.trimToNull(operation.getConfiguration("source-flavors"));
-    String targetFlavorOption = StringUtils.trimToNull(operation.getConfiguration("target-flavor"));
+    ConfiguredTagsAndFlavors tagsAndFlavors = getTagsAndFlavors(workflowInstance,
+        Configuration.many, Configuration.many, Configuration.many, Configuration.one);
+    List<String> sourceTagsOption = tagsAndFlavors.getSrcTags();
+    List<String> targetTagsOption = tagsAndFlavors.getTargetTags();
+    List<MediaPackageElementFlavor> sourceFlavorsOption = tagsAndFlavors.getSrcFlavors();
+    MediaPackageElementFlavor targetFlavor = tagsAndFlavors.getSingleTargetFlavor();
 
     AbstractMediaPackageElementSelector<Track> elementSelector = new TrackSelector();
 
     // Make sure either one of tags or flavors are provided
-    if (StringUtils.isBlank(sourceTagsOption) && StringUtils.isBlank(sourceFlavorOption)
-            && StringUtils.isBlank(sourceFlavorsOption)) {
+    if (sourceTagsOption.isEmpty() && sourceFlavorsOption.isEmpty()) {
       logger.info("No source tags or flavors have been specified, not matching anything");
       return createResult(mediaPackage, Action.CONTINUE);
     }
 
     // Select the source flavors
-    for (String flavor : asList(sourceFlavorsOption)) {
-      try {
-        elementSelector.addFlavor(MediaPackageElementFlavor.parseFlavor(flavor));
-      } catch (IllegalArgumentException e) {
-        throw new WorkflowOperationException("Source flavor '" + flavor + "' is malformed");
-      }
-    }
-
-    // Support legacy "source-flavor" option
-    if (StringUtils.isNotBlank(sourceFlavorOption)) {
-      String flavor = StringUtils.trim(sourceFlavorOption);
-      try {
-        elementSelector.addFlavor(MediaPackageElementFlavor.parseFlavor(flavor));
-      } catch (IllegalArgumentException e) {
-        throw new WorkflowOperationException("Source flavor '" + flavor + "' is malformed");
-      }
+    for (MediaPackageElementFlavor flavor : sourceFlavorsOption) {
+        elementSelector.addFlavor(flavor);
     }
 
     // Select the source tags
-    for (String tag : asList(sourceTagsOption)) {
+    for (String tag : sourceTagsOption) {
       elementSelector.addTag(tag);
     }
 
@@ -190,19 +190,6 @@ public class EncodeWorkflowOperationHandler extends AbstractWorkflowOperationHan
     // Make sure there is at least one profile
     if (profiles.isEmpty())
       throw new WorkflowOperationException("No encoding profile was specified");
-
-    // Target tags
-    List<String> targetTags = asList(targetTagsOption);
-
-    // Target flavor
-    MediaPackageElementFlavor targetFlavor = null;
-    if (StringUtils.isNotBlank(targetFlavorOption)) {
-      try {
-        targetFlavor = MediaPackageElementFlavor.parseFlavor(targetFlavorOption);
-      } catch (IllegalArgumentException e) {
-        throw new WorkflowOperationException("Target flavor '" + targetFlavorOption + "' is malformed");
-      }
-    }
 
     // Look for elements matching the tag
     Collection<Track> elements = elementSelector.select(mediaPackage, false);
@@ -255,7 +242,7 @@ public class EncodeWorkflowOperationHandler extends AbstractWorkflowOperationHan
 
         // Adjust the target tags
         for (Track encodedTrack : composedTracks) {
-          for (String tag : targetTags) {
+          for (String tag : targetTagsOption) {
             logger.trace("Tagging composed track {} with '{}'", encodedTrack.toString(), tag);
             encodedTrack.addTag(tag);
           }
@@ -321,6 +308,12 @@ public class EncodeWorkflowOperationHandler extends AbstractWorkflowOperationHan
       return profile;
     }
 
+  }
+
+  @Reference
+  @Override
+  public void setServiceRegistry(ServiceRegistry serviceRegistry) {
+    super.setServiceRegistry(serviceRegistry);
   }
 
 }

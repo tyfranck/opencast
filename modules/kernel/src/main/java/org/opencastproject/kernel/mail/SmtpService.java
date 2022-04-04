@@ -25,6 +25,7 @@ import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.osgi.service.cm.ConfigurationException;
 import org.osgi.service.cm.ManagedService;
+import org.osgi.service.component.annotations.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,6 +39,13 @@ import javax.mail.internet.MimeMessage;
 /**
  * OSGi service that allows to send e-mails using <code>javax.mail</code>.
  */
+@Component(
+    immediate = true,
+    service = { ManagedService.class,SmtpService.class },
+    property = {
+        "service.description=SMTP Service"
+    }
+)
 public class SmtpService extends BaseSmtpService implements ManagedService {
 
   /** The logging facility */
@@ -292,7 +300,7 @@ public class SmtpService extends BaseSmtpService implements ManagedService {
    * @throws MessagingException
    *           if sending the message failed
    */
-  public void send(String[] to, String[] cc, String[] bcc, String subject, String body, Boolean isHTML) throws MessagingException {
+  public void send(String[] to, String[] cc, String[] bcc, String subject, String body, boolean isHTML) throws MessagingException {
     MimeMessage message = createMessage();
     addRecipients(message, RecipientType.TO, to);
     addRecipients(message, RecipientType.CC, cc);

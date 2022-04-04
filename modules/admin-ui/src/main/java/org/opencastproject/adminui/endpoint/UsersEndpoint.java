@@ -38,8 +38,6 @@ import static org.opencastproject.util.doc.rest.RestParameter.Type.STRING;
 import org.opencastproject.adminui.util.TextFilter;
 import org.opencastproject.index.service.resources.list.query.UsersListQuery;
 import org.opencastproject.index.service.util.RestUtils;
-import org.opencastproject.matterhorn.search.SearchQuery.Order;
-import org.opencastproject.matterhorn.search.SortCriterion;
 import org.opencastproject.security.api.Organization;
 import org.opencastproject.security.api.Role;
 import org.opencastproject.security.api.SecurityService;
@@ -58,6 +56,8 @@ import org.opencastproject.util.doc.rest.RestParameter;
 import org.opencastproject.util.doc.rest.RestQuery;
 import org.opencastproject.util.doc.rest.RestResponse;
 import org.opencastproject.util.doc.rest.RestService;
+import org.opencastproject.util.requests.SortCriterion;
+import org.opencastproject.util.requests.SortCriterion.Order;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
@@ -275,12 +275,12 @@ public class UsersEndpoint {
       usersJSON.add(generateJsonUser(user));
     }
 
-    Map<String, Object> response = new HashMap<>();
-    response.put("results", usersJSON);
-    response.put("count", usersJSON.size());
-    response.put("offset", offset);
-    response.put("limit", limit);
-    response.put("total", total);
+    Map<String, Object> response = Map.of(
+        "results", usersJSON,
+        "count", usersJSON.size(),
+        "offset", offset,
+        "limit", limit,
+        "total", total);
     return Response.ok(gson.toJson(response)).build();
   }
 
@@ -291,7 +291,9 @@ public class UsersEndpoint {
           @RestParameter(description = "The password.", isRequired = true, name = "password", type = STRING),
           @RestParameter(description = "The name.", isRequired = false, name = "name", type = STRING),
           @RestParameter(description = "The email.", isRequired = false, name = "email", type = STRING),
-          @RestParameter(name = "roles", type = STRING, isRequired = false, description = "The user roles as a json array") }, responses = {
+          @RestParameter(name = "roles", type = STRING, isRequired = false, description = "The user roles as a json array, e.g. <br>"
+                  + "[{'name': 'ROLE_ADMIN', 'type': 'INTERNAL'}, {'name': 'ROLE_XY', 'type': 'INTERNAL'}]") },
+          responses = {
           @RestResponse(responseCode = SC_CREATED, description = "User has been created."),
           @RestResponse(responseCode = SC_FORBIDDEN, description = "Not enough permissions to create a user with a admin role."),
           @RestResponse(responseCode = SC_CONFLICT, description = "An user with this username already exist.")})

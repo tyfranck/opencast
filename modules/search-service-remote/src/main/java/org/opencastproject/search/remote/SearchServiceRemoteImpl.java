@@ -31,8 +31,10 @@ import org.opencastproject.search.api.SearchQuery;
 import org.opencastproject.search.api.SearchResult;
 import org.opencastproject.search.api.SearchResultImpl;
 import org.opencastproject.search.api.SearchService;
+import org.opencastproject.security.api.TrustedHttpClient;
 import org.opencastproject.security.api.UnauthorizedException;
 import org.opencastproject.serviceregistry.api.RemoteBase;
+import org.opencastproject.serviceregistry.api.ServiceRegistry;
 
 import org.apache.http.HttpResponse;
 import org.apache.http.NameValuePair;
@@ -42,6 +44,8 @@ import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.http.message.BasicNameValuePair;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -51,6 +55,13 @@ import java.util.List;
 /**
  * A proxy to a remote search service.
  */
+@Component(
+    immediate = true,
+    service = SearchService.class,
+    property = {
+        "service.description=Search Remote Service Proxy"
+    }
+)
 public class SearchServiceRemoteImpl extends RemoteBase implements SearchService {
   private static final Logger logger = LoggerFactory.getLogger(SearchServiceRemoteImpl.class);
 
@@ -115,6 +126,31 @@ public class SearchServiceRemoteImpl extends RemoteBase implements SearchService
     throw new SearchException("Unable to remove " + mediaPackageId + " from a remote search service");
   }
 
+
+  /**
+   * {@inheritDoc}
+   *
+   * @see org.opencastproject.search.api.SearchService#deleteSeries(java.lang.String)
+   */
+  @Override
+  public Job deleteSeries(String seriesId) throws SearchException {
+    HttpDelete del = new HttpDelete("/deleteSeries/" + seriesId);
+    HttpResponse response = getResponse(del);
+    try {
+      if (response != null) {
+        Job job = JobParser.parseJob(response.getEntity().getContent());
+        logger.info("Removing Series '{}' from a remote search service", seriesId);
+        return job;
+      }
+    } catch (Exception e) {
+      throw new SearchException("Unable to remove " + seriesId + " from a remote search service", e);
+    } finally {
+      closeConnection(response);
+    }
+
+    throw new SearchException("Unable to remove " + seriesId + " from a remote search service");
+  }
+
   /**
    * {@inheritDoc}
    *
@@ -125,8 +161,9 @@ public class SearchServiceRemoteImpl extends RemoteBase implements SearchService
     HttpGet get = new HttpGet(getSearchUrl(q, false));
     HttpResponse response = getResponse(get);
     try {
-      if (response != null)
+      if (response != null) {
         return SearchResultImpl.valueOf(response.getEntity().getContent());
+      }
     } catch (Exception e) {
       throw new SearchException("Unable to parse results of a getByQuery request from remote search index: ", e);
     } finally {
@@ -135,18 +172,14 @@ public class SearchServiceRemoteImpl extends RemoteBase implements SearchService
     throw new SearchException("Unable to perform getByQuery from remote search index");
   }
 
-  /**
-   * {@inheritDoc}
-   *
-   * @see org.opencastproject.search.api.SearchService#getForAdministrativeRead(org.opencastproject.search.api.SearchQuery)
-   */
   @Override
   public SearchResult getForAdministrativeRead(SearchQuery q) throws SearchException, UnauthorizedException {
     HttpGet get = new HttpGet(getSearchUrl(q, true));
     HttpResponse response = getResponse(get);
     try {
-      if (response != null)
+      if (response != null) {
         return SearchResultImpl.valueOf(response.getEntity().getContent());
+      }
     } catch (Exception e) {
       throw new SearchException(
               "Unable to parse results of a getForAdministrativeRead request from remote search index: ", e);
@@ -172,8 +205,9 @@ public class SearchServiceRemoteImpl extends RemoteBase implements SearchService
     logger.debug("Sending remote query '{}'", get.getRequestLine().toString());
     HttpResponse response = getResponse(get);
     try {
-      if (response != null)
+      if (response != null) {
         return SearchResultImpl.valueOf(response.getEntity().getContent());
+      }
     } catch (Exception e) {
       throw new SearchException("Unable to parse getByQuery response from remote search index", e);
     } finally {
@@ -196,12 +230,14 @@ public class SearchServiceRemoteImpl extends RemoteBase implements SearchService
     List<NameValuePair> queryStringParams = new ArrayList<NameValuePair>();
     queryStringParams.add(new BasicNameValuePair("sign", "false"));
 
-    // MH-10216, Choose "/expisode.xml" endpoint when querying by mediapackage id (i.e. episode id ) to receive full mp data
+    // MH-10216, Choose "/expisode.xml" endpoint when querying by mediapackage
+    // id (i.e. episode id ) to receive full mp data
     if (q.getId() != null || q.getSeriesId() != null || q.getElementFlavors() != null || q.getElementTags() != null) {
       url.append("/episode.xml?");
 
-      if (q.getSeriesId() != null)
+      if (q.getSeriesId() != null) {
         queryStringParams.add(new BasicNameValuePair("sid", q.getSeriesId()));
+      }
 
       if (q.getElementFlavors() != null) {
         for (MediaPackageElementFlavor f : q.getElementFlavors()) {
@@ -216,16 +252,18 @@ public class SearchServiceRemoteImpl extends RemoteBase implements SearchService
       }
     } else {
       url.append("/series.xml?");
-      queryStringParams.add(new BasicNameValuePair("series", Boolean.toString(q.isIncludeSeries())));
-      queryStringParams.add(new BasicNameValuePair("episodes", Boolean.toString(q.isIncludeEpisodes())));
+      queryStringParams.add(new BasicNameValuePair("series", Boolean.toString(q.willIncludeSeries())));
+      queryStringParams.add(new BasicNameValuePair("episodes", Boolean.toString(q.willIncludeEpisodes())));
     }
 
     // General query parameters
-    if (q.getText() != null)
+    if (q.getText() != null) {
       queryStringParams.add(new BasicNameValuePair("q", q.getText()));
+    }
 
-    if (q.getId() != null)
+    if (q.getId() != null) {
       queryStringParams.add(new BasicNameValuePair("id", q.getId()));
+    }
 
     if (admin) {
       queryStringParams.add(new BasicNameValuePair("admin", Boolean.TRUE.toString()));
@@ -238,6 +276,18 @@ public class SearchServiceRemoteImpl extends RemoteBase implements SearchService
 
     url.append(URLEncodedUtils.format(queryStringParams, "UTF-8"));
     return url.toString();
+  }
+
+  @Reference
+  @Override
+  public void setTrustedHttpClient(TrustedHttpClient trustedHttpClient) {
+    super.setTrustedHttpClient(trustedHttpClient);
+  }
+
+  @Reference
+  @Override
+  public void setRemoteServiceManager(ServiceRegistry serviceRegistry) {
+    super.setRemoteServiceManager(serviceRegistry);
   }
 
 }

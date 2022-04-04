@@ -6,7 +6,7 @@
     <meta name="description" content="">
     <meta name="viewport" content="width=device-width">
     <!-- Place favicon.ico and apple-touch-icon.png in the root directory -->
-    <!-- build:css styles/vendor.css -->
+    <!-- build:css(./) styles/vendor.css -->
     <!-- bower:css -->
     <link rel="stylesheet" href="bower_components/jqueryui-timepicker-addon/dist/jquery-ui-timepicker-addon.css" />
     <link rel="stylesheet" href="bower_components/angular-hotkeys/build/hotkeys.css" />
@@ -59,9 +59,10 @@
           <span id="error-count" class="badge" ng-show="services.error">{{ services.numErr }}</span>
           <ul class="dropdown-ul">
             <li ng-repeat="(key, value) in services.service"><!-- service directive -->
-              <a ng-if="key == 'Latest Version' && value.error" href="{{ value.docs_url }}" service-name="{{ key }}">
+              <a ng-if="key == 'Latest Version' && (value.error || value.warning)" href="{{ value.docs_url }}" service-name="{{ key }}">
                 <span>Opencast</span>
-                <span class="ng-multi-value ng-multi-value-red">{{ value.status }}</span>
+                <span ng-if="value.error" class="ng-multi-value ng-multi-value-red">{{ value.status }}</span>
+                <span ng-if="value.warning" class="ng-multi-value ng-multi-value-orange">{{ value.status }}</span>
               </a>
               <a ng-if="key != 'Latest Version'" ng-click="toServices($event)" service-name="{{ key }}">
                 <span>{{ key }}</span>
@@ -113,9 +114,20 @@
 
     <footer id="main-footer" ng-controller="NavCtrl">
       <div class="default-footer">
-        <div ng-if="version.version" class="meta">
+        <div ng-if="version.version"
+             class="meta"
+             title="{{ 'BUILD.VERSION' | translate }}">
           Opencast {{ version.version }}
-          <span with-role="ROLE_ADMIN"> - {{ version.buildNumber || 'undefined' }}</span>
+          <span ng-if="version.buildNumber"
+                with-role="ROLE_ADMIN"
+                title="{{ 'BUILD.COMMIT' | translate }}">
+            - {{ version.buildNumber || 'undefined' }}
+          </span>
+          <span ng-if="version['last-modified']"
+                with-role="ROLE_ADMIN"
+                title="{{ 'BUILD.DATE_DESC' | translate }}">
+            - {{ 'BUILD.BUILT_ON' | translate }} {{ version['last-modified'] }}
+          </span>
         </div>
         <div ng-if="feedbackUrl" class="feedback-btn" id="feedback-btn">
           <a href="javascript:;">Feedback</a>
@@ -294,9 +306,11 @@
     <script src="scripts/shared/directives/callOnSearchDirective.js"></script>
     <script src="scripts/shared/directives/oldDropdownDirective.js"></script>
     <script src="scripts/shared/directives/passwordCheckDirective.js"></script>
+    <script src="scripts/shared/directives/passwordStrengthDirective.js"></script>
     <script src="scripts/shared/directives/selectBoxDirective.js"></script>
     <script src="scripts/shared/directives/navDirective.js"></script>
     <script src="scripts/shared/directives/tableDirective.js"></script>
+    <script src="scripts/shared/directives/sanitizeXMLDirective.js"></script>
     <script src="scripts/shared/directives/statsDirective.js"></script>
     <script src="scripts/shared/directives/collapsibleBoxDirective.js"></script>
     <script src="scripts/shared/directives/confirmationModalDirective.js"></script>

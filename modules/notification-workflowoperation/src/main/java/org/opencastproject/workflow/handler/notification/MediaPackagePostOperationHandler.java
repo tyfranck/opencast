@@ -27,9 +27,11 @@ import org.opencastproject.mediapackage.MediaPackageParser;
 import org.opencastproject.search.api.SearchQuery;
 import org.opencastproject.search.api.SearchResult;
 import org.opencastproject.search.api.SearchService;
+import org.opencastproject.serviceregistry.api.ServiceRegistry;
 import org.opencastproject.workflow.api.AbstractWorkflowOperationHandler;
 import org.opencastproject.workflow.api.WorkflowInstance;
 import org.opencastproject.workflow.api.WorkflowOperationException;
+import org.opencastproject.workflow.api.WorkflowOperationHandler;
 import org.opencastproject.workflow.api.WorkflowOperationInstance;
 import org.opencastproject.workflow.api.WorkflowOperationResult;
 import org.opencastproject.workflow.api.WorkflowOperationResult.Action;
@@ -45,6 +47,8 @@ import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.message.BasicNameValuePair;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -57,6 +61,14 @@ import java.util.Set;
 /**
  * Workflow Operation for POSTing a MediaPackage via HTTP
  */
+@Component(
+    immediate = true,
+    service = WorkflowOperationHandler.class,
+    property = {
+        "service.description=Workflow Operation that POSTs MediaPackages via HTTP",
+        "workflow.operation=post-mediapackage"
+    }
+)
 public class MediaPackagePostOperationHandler extends AbstractWorkflowOperationHandler {
 
   /** The logging facility */
@@ -65,18 +77,19 @@ public class MediaPackagePostOperationHandler extends AbstractWorkflowOperationH
   /** search service **/
   private SearchService searchService;
 
+  @Reference
   public void setSearchService(SearchService searchService) {
     this.searchService = searchService;
   }
 
-  /**
-   * {@inheritDoc}
-   *
-   * @see org.opencastproject.workflow.api.WorkflowOperationHandler#start(org.opencastproject.workflow.api.WorkflowInstance,
-   *      JobContext)
-   */
+  @Reference
+  @Override
+  public void setServiceRegistry(ServiceRegistry serviceRegistry) {
+    super.setServiceRegistry(serviceRegistry);
+  }
+
   public WorkflowOperationResult start(final WorkflowInstance workflowInstance, JobContext context)
-    throws WorkflowOperationException {
+          throws WorkflowOperationException {
 
     // get configuration
     WorkflowOperationInstance currentOperation = workflowInstance.getCurrentOperation();
@@ -92,14 +105,15 @@ public class MediaPackagePostOperationHandler extends AbstractWorkflowOperationH
       searchQuery.withId(mp.getIdentifier().toString());
       SearchResult result = searchService.getByQuery(searchQuery);
       if (result.size() != 1) {
-          throw new WorkflowOperationException("Received multiple results for identifier"
-              + "\"" + mp.getIdentifier().toString() + "\" from search service. ");
+        throw new WorkflowOperationException("Received multiple results for identifier"
+            + "\"" + mp.getIdentifier().toString() + "\" from search service. ");
       }
       logger.info("Getting media package from search service");
       mp = result.getItems()[0].getMediaPackage();
     }
 
-    logger.info("Submitting {} ({}) as {} to {}", mp.getTitle(), mp.getIdentifier(), config.getFormat().name(), config.getUrl());
+    logger.info("Submitting {} ({}) as {} to {}",
+        mp.getTitle(), mp.getIdentifier(), config.getFormat().name(), config.getUrl());
 
     try {
       // serialize MediaPackage to target format
@@ -229,15 +243,13 @@ public class MediaPackagePostOperationHandler extends AbstractWorkflowOperationH
         }
 
         // Configure debug mode
-        if (keys.contains(PROPERTY_DEBUG))
-        {
+        if (keys.contains(PROPERTY_DEBUG)) {
           String debugstr = operation.getConfiguration(PROPERTY_DEBUG).trim().toUpperCase();
           debug = "YES".equals(debugstr) || "TRUE".equals(debugstr);
         }
 
         // Configure debug mode
-        if (keys.contains(PROPERTY_MEDIAPACKAGE_TYPE))
-        {
+        if (keys.contains(PROPERTY_MEDIAPACKAGE_TYPE)) {
           String cfgval = operation.getConfiguration(PROPERTY_MEDIAPACKAGE_TYPE).trim().toUpperCase();
           mpFromSearch = "SEARCH".equals(cfgval);
         }

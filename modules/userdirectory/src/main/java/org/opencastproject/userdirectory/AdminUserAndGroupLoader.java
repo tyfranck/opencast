@@ -61,11 +61,11 @@ import java.util.stream.Collectors;
  * organization.
  */
 @Component(
-  property = {
-    "service.description=System admin user and group loader"
-  },
-  immediate = true,
-  service = { AdminUserAndGroupLoader.class }
+    property = {
+        "service.description=System admin user and group loader"
+    },
+    immediate = true,
+    service = { AdminUserAndGroupLoader.class }
 )
 public class AdminUserAndGroupLoader implements OrganizationDirectoryListener {
 
@@ -139,7 +139,7 @@ public class AdminUserAndGroupLoader implements OrganizationDirectoryListener {
     adminRoles = StringUtils.trimToNull(bundleCtx.getProperty(OPT_ADMIN_ROLES));
 
     if (DEFAULT_ADMIN_PASSWORD_CONFIGURATION.equals(adminPassword)) {
-    logger.warn("\n"
+      logger.warn("\n"
             + "######################################################\n"
             + "#                                                    #\n"
             + "# WARNING: Opencast still uses the default admin     #\n"
@@ -168,8 +168,9 @@ public class AdminUserAndGroupLoader implements OrganizationDirectoryListener {
    *          the organization
    */
   private JpaOrganization fromOrganization(Organization org) {
-    if (org instanceof JpaOrganization)
+    if (org instanceof JpaOrganization) {
       return (JpaOrganization) org;
+    }
     return new JpaOrganization(org.getId(), org.getName(), org.getServers(), org.getAdminRole(), org.getAnonymousRole(),
             org.getProperties());
   }
@@ -298,8 +299,9 @@ public class AdminUserAndGroupLoader implements OrganizationDirectoryListener {
       Stream<String> stream = Stream.$(IOUtils.readLines(rolesIS)).filter(new Fn<String, Boolean>() {
         @Override
         public Boolean apply(String line) {
-          if (StringUtils.trimToEmpty(line).startsWith("#"))
+          if (StringUtils.trimToEmpty(line).startsWith("#")) {
             return false;
+          }
           return true;
         }
       });
@@ -334,7 +336,7 @@ public class AdminUserAndGroupLoader implements OrganizationDirectoryListener {
    * @param groupRoleProvider
    *          the groupRoleProvider to set
    */
-  @Reference(name = "groupRoleProvider")
+  @Reference
   void setGroupRoleProvider(JpaGroupRoleProvider groupRoleProvider) {
     this.groupRoleProvider = groupRoleProvider;
   }
@@ -345,7 +347,7 @@ public class AdminUserAndGroupLoader implements OrganizationDirectoryListener {
    * @param userAndRoleProvider
    *          the user and role provider to set
    */
-  @Reference(name = "userAndRoleProvider")
+  @Reference
   void setUserAndRoleProvider(JpaUserAndRoleProvider userAndRoleProvider) {
     this.userAndRoleProvider = userAndRoleProvider;
   }
@@ -356,7 +358,7 @@ public class AdminUserAndGroupLoader implements OrganizationDirectoryListener {
    * @param organizationDirectoryService
    *          the organizationDirectoryService to set
    */
-  @Reference(name = "organizationDirectoryService")
+  @Reference
   void setOrganizationDirectoryService(OrganizationDirectoryService organizationDirectoryService) {
     this.organizationDirectoryService = organizationDirectoryService;
     this.organizationDirectoryService.addOrganizationDirectoryListener(this);
@@ -368,7 +370,7 @@ public class AdminUserAndGroupLoader implements OrganizationDirectoryListener {
    * @param securityService
    *          the security service
    */
-  @Reference(name = "security-service")
+  @Reference
   void setSecurityService(SecurityService securityService) {
     this.securityService = securityService;
   }

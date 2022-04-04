@@ -9,6 +9,287 @@ The following list contains a list of passed proposals for reference.
 Passed Proposals
 ----------------
 
+### Drop official MySQL support
+Proposed by Lars Kiesow <lkiesow@uos.de>, passed on Wed, February 16 2022
+
+```no-highlight
+Hi everyone,
+since I'm testing database things once again, I noticed that more and
+more our infrastructure is set-up to test with MariaDB (or now
+PostegreSQL) and no longer with MySQL. We have MySQL left in none of our
+deployments and I feel like something could break compatibility at any
+moment right now and no one would notice during a release cycle.
+
+Overall, the situation is similar to back when we decided to no longer
+officially support PostgreSQL. It technically works and should continue
+to work, but no developers actually test against it and it could easily
+break without someone noticing.
+
+
+That is why, similar to the old decision, I would like to #propose to:
+
+- officially mark MySQL it as unsupported
+- explain that it should technically work, but we do not test it
+- explain that the set-up should be similar to MariaDB but may differ
+  slightly and we have no documentation for that
+
+
+Of course, also similar to PostgreSQL, we can always decide to support
+it again later, if interest picks up and the database landscape changes.
+
+–Lars
+```
+
+### PR and release process changes
+Proposed by Greg Logan <gregorydlogan@gmail.com>, passed on Thu, 17 Jun 2021
+
+```no-highlight
+Hi all,
+
+As discussed at the technical meeting today, I'm proposing a few changes to our
+current process:
+
+1) Intra-organization reviews should be permitted.  This means that, for example, Elan can now review Elan's PRs.
+Considering our current developmentresources, it's not reasonable to continue with the current methodology - I'm ending
+up being the primary non-Elan reviewer, and that's bottlenecking our reviews.  This change also has far less impact
+given that the larger committer groups are generally supporting multiple separate installs, leading to less drive for a
+single institution's goals to be pushed into the project.
+
+2) PRs must still be discussed at the technical meeting prior to merge.  Yes, this imposes a potential 1 week delay in
+merging a PR, but it also gives you (committers) a chance to object to a potential merge.  It's also a *very* good
+reason to show up at the technical meeting.
+
+3) Releases shall be on Wednesday, rather than Tuesday.  I'm not sure if we've formalized that releases are on Tuesday
+currently, but doing them on Wednesday means that last minute PRs can be discussed on Tuesday, then immediately merged,
+rather than waiting around for a full week and missing a release.
+
+WIth this change, I'd also like to modify the committer expectations: We used to say 20% of your time.  That would be
+nice, but it's obviously not happening.  Instead, I propose that committers be expected to review 2-3 PRs per week.
+
+Proposal closes EOD 2021-06-18 UTC-6.
+
+G
+```
+
+### Closing old Pull Requests
+Proposed by Katrin Ihler <ihler@elan-ev.de>, passed on Mon, 9 Mar 2021
+
+```no-highlight
+Hi everyone,
+
+I'd like to establish a rule for closing old pull requests, since we
+have some of those lying around for quite a while and I'd like a
+guideline. I propose the following:
+
+A pull request can be closed if neither the pull request creator nor
+another person working on the PR has addressed any review findings
+within 6 months. (Note that this is optional, so we don't _have_ to do it.)
+
+A review would be considered addressed if the PR is amended or the
+finding is disputed. So a discussion would also count, but something
+like "I don't have time for this right now" wouldn't.
+
+Closing a PR doesn't constitute a rejection, it can be re-opened at any
+time once the person responsible can give it attention again.
+
+As usual, if no one objects, this proposal passes after the next 72 hours.
+
+Best regards,
+
+Katrin
+```
+
+### External API deprecation policy
+Proposed by Maximiliano Lira Del Canto <mliradel@uni-koeln.de>, passed on 24 Feb 2021
+```no-highlight
+As we talked in the draft thread and there are no more comments, this is the 
+final version of the proposal about the deprecation of the old 
+versions in the external API.
+
+External API deprecation policy:
+
+- Any minor version should be supported at a maximum of 2 (Two) Opencast 
+Releases since the release of the next minor version of the API.
+ 
+    Example: If Opencast 10 has API v1.3.0 and Opencast 11 comes 
+    with API v1.4.0, the API v1.3.0 will be supported until Opencast 12)
+ 
+
+- Deprecating a version does not require removing it from the code base, 
+just removes the guarantee that it will be present in the next version.
+ 
+
+- When an API version is set to be deprecated needs to notify the users 
+with a warning that they should start to use the newest version of the API. 
+A custom HTTP header when the flagged version is called plus a warning in 
+the website docs.
+ 
+
+- In the case of a new major version, the immediate old version should 
+be deprecated 4 (Four) next releases of Opencast.
+
+- Updating Opencast don't mean a new API version
+
+- This proposal is only for the external API
+
+```
+Example of deprecation policy:
+![deprecation-api-policy](img/api-depr-example.png)
+
+### Release Notes
+Proposed by Greg Logan <gregorydlogan@gmail.com>, passed on Tue, 26 Jan 2021
+
+```no-highlight
+Hi all,
+
+As discussed in the dev meeting, I'm going to #propose that new features (ie,
+things that should be listed in the release notes) should create a new file
+under docs/guides/admin/releasenotes containing at least one line regarding the
+change.  At release time, rather than the release managers combing through the
+commits we can just cat the files together and have something sane.
+
+Suggested format: A single line short description, unless that description
+exceeds 120 characters, in which case multiple lines wrapping at 120.  If for
+some reason your features require a larger blurb that's ok too - this should be
+rare, so the RMs can check and move things about.  We will be checking before
+we commit the tag anyway, right? :)
+
+Short example:
+
+- My spiffy new feature, which lets Opencast run on a 386 in 64k of RAM.
+
+
+Long example:
+
+- My short description
+
+My longer feature description
+---------------------------------------
+Lorem ipsum....
+
+
+Proposal passes EOD 2021-01-26 UTC-6
+
+G
+```
+
+
+### Release Process Update
+Proposed by Lars Kiesow <lkiesow@uos.de>, passed on Thu, 24 Dec 2020
+
+```no-highlight
+Hi everyone,
+based on the discussion on list and in the technical meeting, Lukas and
+I have created a proposal for changing our release process and applying
+a new set of rules. You might notice that we have deliberately not
+included all of what we discussed but hopefully only what can get
+consensus for now.
+
+Apart from some minor changes, the main difference in here is that we
+transition from making a distinction between feature and bug fix to
+defining a set of rules that hopefully ensure smooth minor updates.
+
+If this proposal passes, we can work for there and refine this but we
+hope that this is a good starting point.
+
+
+## Release Schedule
+
+- Major releases happen every half year
+- Minor stable releases are cut monthly monthly
+- Minor legacy releases are cut on demand
+- Urgent minor releases may be cut if necessary
+- Feature freeze for a major version should be about a month before the
+  release
+
+
+## Accepting patches for minor releases
+
+- All patches need to be discussed in the technical meeting
+    - Minor changes should not take much time
+    - Protects against problematic changes in minor releases
+    - Exceptions may be discussed if necessary (e.g. version bumps for
+      libraries on develop)
+- Patches for minor releases must not
+    - Modify any existing database tables
+    - Modify the indexes or otherwise cause re-indexing
+    - Require a different ActiveMQ configuration
+    - Modify existing translations
+- Patches for minor releases must
+    - Work with the same configuration within a major version
+
+
+## Be Pragmatic
+
+- If everything is broken, don't let rules hold you back…
+    - There is always a special case: If in doubt talk to the community
+      and find a solution that works.
+    - Communication is key: If you think you need to break a rule,
+      coordinate that with the community.
+
+
+## Additional suggestions
+
+- Patches should be applied to the latest release branch if possible
+    - Avoid the risk of breaking legacy due to less testing
+    - Avoid unnecessary merge conflicts
+- Patches should avoid unnecessarily large changes in any release branch
+
+
+As usual, if no one objects, this proposal passes in three days.
+
+Best regards,
+Lars
+```
+
+
+### Relocate build infrastructure to main repository
+Proposed by Lars Kiesow <lkiesow@uos.de>, passed on Thu, 17 Dec 2020
+
+```no-highlight
+Hi everyone,
+as you are all aware there are multiple community members working on
+and maintaining infrastructure for different binary builds. For
+example, Greg is doing the Debian packages.
+
+All these are currently maintained in separate repositories… somewhere.
+Greg and I would like to bring these back to the main repositories to
+not loose track of what's available and where things are living.
+
+But maintaining these sometimes requires quick actions and we cannot
+really create a pull request every time a release is cut and then wait
+a week or two before it's merged until we can release the packaged
+version.
+
+That is why I #propose to allow for maintainers of these areas to work
+on these directly without running through our usual pull request and
+review rules.
+
+For example, that could mean that I could quickly update the RPM spec
+file if necessary while I would not be allowed to just modify the
+codebase (e.g. modules/*) on my own.
+
+Initially, I #propose the following areas and maintainers:
+
+  Debian build architecture              Greg Logan
+  RPM build architecture                 Lars Kiesow
+  docs.opencast.org build architecture   Lars Kiesow
+
+This doesn't really change anything at the moment since we are already
+in control of these parts right now. The difference would be that it's
+not maintained somewhere any longer but everyone knows where to find
+things and (potentially) how contribute.
+
+Of course, we can extend this whenever we need to to include more/less
+scripts. Though I suggest that we keep this to what we officially
+support.
+
+As usual, this proposal passes unless someone vetos it in the next 72h.
+
+Best regards,
+Lars
+```
+
 
 ### JDK Support
 Proposed by Greg Logan<gregorydlogan@gmail.com>, passed on Wed, 11 Nov 2020

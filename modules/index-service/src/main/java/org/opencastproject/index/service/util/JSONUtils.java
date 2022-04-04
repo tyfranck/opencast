@@ -42,6 +42,7 @@ import org.codehaus.jettison.json.JSONException;
 import org.codehaus.jettison.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -54,6 +55,12 @@ import java.util.Set;
  * Utility class providing helpers for all operation related to JSON.
  */
 public final class JSONUtils {
+
+  /** This regex is used to reduce the users in the filter selectbox.
+   * The filter is located in the top right corner in the admin ui. */
+  private static String userFilterRegex;
+  private static final String[] userListsToReduce = {"CONTRIBUTORS", "PUBLISHER",
+          "ORGANIZERS", "CONTRIBUTORS.USERNAMES", "EVENTS.PUBLISHER", "USERS.NAME"};
 
   private JSONUtils() {
 
@@ -133,6 +140,10 @@ public final class JSONUtils {
           values = new HashMap<String, String>();
         } else {
           values = listProvidersService.getList(listProviderName.get(), query, false);
+          if (Arrays.asList(userListsToReduce).contains(listProviderName.get())) {
+            // reduces the user list ('values' map) by the configured userFilterRegex
+            values.keySet().removeIf(u -> !u.matches(userFilterRegex));
+          }
           translatable = listProvidersService.isTranslatable(listProviderName.get());
         }
 
@@ -158,8 +169,6 @@ public final class JSONUtils {
    *          The {@link ResourceListQuery}
    * @param listProvidersService
    *          The {@link ListProvidersService} to get the possible values
-   * @param org
-   *          The {@link Organization}
    * @param series
    *          The Series with write access
    * @return
@@ -167,14 +176,11 @@ public final class JSONUtils {
    *           if the possible values can not be retrieved correctly from the list provider.
    */
   public static JValue filtersToJSONSeriesWriteAccess(ResourceListQuery query, ListProvidersService listProvidersService,
-          Organization org, Map<String, String> series) throws ListProviderException {
+          Map<String, String> series) throws ListProviderException {
 
-    List<Field> filtersJSON = new ArrayList<Field>();
-    List<Field> fields = null;
-    List<ResourceListFilter<?>> filters = query.getAvailableFilters();
-
-    for (ResourceListFilter<?> filter : filters) {
-      fields = new ArrayList<Field>();
+    List<Field> filtersJSON = new ArrayList<>();
+    for (ResourceListFilter<?> filter : query.getAvailableFilters()) {
+      List<Field> fields = new ArrayList<>();
 
       fields.add(f("type", v(filter.getSourceType().toString().toLowerCase())));
       fields.add(f("label", v(filter.getLabel())));
@@ -247,6 +253,10 @@ public final class JSONUtils {
     }
 
     return map;
+  }
+
+  public static void setUserRegex(String regex) {
+    userFilterRegex = regex;
   }
 
 }

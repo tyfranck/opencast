@@ -44,6 +44,8 @@ import org.apache.commons.lang3.StringUtils;
 import org.osgi.service.cm.ConfigurationException;
 import org.osgi.service.cm.ManagedService;
 import org.osgi.service.component.ComponentContext;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -70,6 +72,13 @@ import java.util.regex.Pattern;
  *     ffmpeg -i input.file -vf startCropping=wi-2*x:hi:x:0 -max_muxing_queue_size 2000 -y output.file
  * </pre>
  */
+@Component(
+    immediate = true,
+    service = { CropService.class,ManagedService.class },
+    property = {
+        "service.description=Video Scale Service"
+    }
+)
 public class CropServiceImpl extends AbstractJobProducer implements CropService, ManagedService {
 
   /**
@@ -235,9 +244,14 @@ public class CropServiceImpl extends AbstractJobProducer implements CropService,
   }
 
   private File cropFFmpeg(File mediaFile) throws CropException {
-    String[] command = new String[] { binary, "-i", mediaFile.getAbsolutePath(), "-vf", "cropdetect="
-            + greyScaleLimit + ":" + round + ":" + reset,
-            additionalParameters, "-f", "null", "-"};
+    String[] command = new String[] {
+        binary,
+        "-i", mediaFile.getAbsolutePath(),
+        "-vf", "cropdetect=" + greyScaleLimit + ":" + round + ":" + reset,
+        additionalParameters,
+        "-f", "null",
+        "-"
+    };
     String commandline = StringUtils.join(command, " ");
     logger.info("Running {}", commandline);
 
@@ -255,12 +269,12 @@ public class CropServiceImpl extends AbstractJobProducer implements CropService,
         while (null != (line = errStream.readLine())) {
           Matcher m = regexPattern.matcher(line);
           while (m.find()) {
-           widthVideo = Integer.valueOf(m.group("widthVideo"));
-           int x = Integer.valueOf(m.group("cropValue"));
-           if (cropValue == 0 || cropValue > x) {
-             cropValue = x;
-             crop = m.group("crop");
-           }
+            widthVideo = Integer.valueOf(m.group("widthVideo"));
+            int x = Integer.valueOf(m.group("cropValue"));
+            if (cropValue == 0 || cropValue > x) {
+              cropValue = x;
+              crop = m.group("crop");
+            }
           }
         }
       } catch (IllegalStateException | IllegalArgumentException e) {
@@ -280,7 +294,7 @@ public class CropServiceImpl extends AbstractJobProducer implements CropService,
 
     if (cropValue > (widthVideo / maxCroppingRatio)) {
       logger.info("Black area in the video is considered too large for cropping. File: " + mediaFile.getAbsolutePath()
-        + " will be skipped");
+          + " will be skipped");
       return mediaFile;
     }
 
@@ -291,10 +305,15 @@ public class CropServiceImpl extends AbstractJobProducer implements CropService,
 
     // FFmpeg command for cropping video
     logger.info("String for startCropping command: {}", crop);
-    String croppedOutputPath = FilenameUtils.removeExtension(mediaFile.getAbsolutePath()).concat(RandomStringUtils
-            .randomAlphanumeric(8) + targetExtension);
-    String[] cropCommand = new String[] { binary, "-i", mediaFile.getAbsolutePath(), "-vf", crop,
-            additionalParameters, croppedOutputPath };
+    String croppedOutputPath = FilenameUtils.removeExtension(mediaFile.getAbsolutePath())
+        .concat(RandomStringUtils.randomAlphanumeric(8) + targetExtension);
+    String[] cropCommand = new String[] {
+        binary,
+        "-i", mediaFile.getAbsolutePath(),
+        "-vf", crop,
+        additionalParameters,
+        croppedOutputPath
+    };
     String cropCommandline = StringUtils.join(cropCommand, " ");
 
     logger.info("Running {}", cropCommandline);
@@ -465,24 +484,28 @@ public class CropServiceImpl extends AbstractJobProducer implements CropService,
     return organizationDirectoryService;
   }
 
+  @Reference
   public void setServiceRegistry(ServiceRegistry serviceRegistry) {
     this.serviceRegistry = serviceRegistry;
   }
 
+  @Reference
   public void setWorkspace(Workspace workspace) {
     this.workspace = workspace;
   }
 
+  @Reference
   public void setUserDirectoryService(UserDirectoryService userDirectoryService) {
     this.userDirectoryService = userDirectoryService;
   }
 
+  @Reference
   public void setOrganizationDirectoryService(OrganizationDirectoryService organizationDirectoryService) {
     this.organizationDirectoryService = organizationDirectoryService;
   }
 
+  @Reference
   public void setSecurityService(SecurityService securityService) {
     this.securityService = securityService;
   }
 }
-

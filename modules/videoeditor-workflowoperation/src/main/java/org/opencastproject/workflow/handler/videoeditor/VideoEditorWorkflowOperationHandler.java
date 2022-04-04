@@ -36,6 +36,7 @@ import org.opencastproject.mediapackage.MediaPackageException;
 import org.opencastproject.mediapackage.Track;
 import org.opencastproject.mediapackage.selector.SimpleElementSelector;
 import org.opencastproject.mediapackage.selector.TrackSelector;
+import org.opencastproject.serviceregistry.api.ServiceRegistry;
 import org.opencastproject.smil.api.SmilException;
 import org.opencastproject.smil.api.SmilResponse;
 import org.opencastproject.smil.api.SmilService;
@@ -46,8 +47,10 @@ import org.opencastproject.smil.entity.media.element.api.SmilMediaElement;
 import org.opencastproject.util.NotFoundException;
 import org.opencastproject.videoeditor.api.ProcessFailedException;
 import org.opencastproject.videoeditor.api.VideoEditorService;
+import org.opencastproject.workflow.api.ConfiguredTagsAndFlavors;
 import org.opencastproject.workflow.api.WorkflowInstance;
 import org.opencastproject.workflow.api.WorkflowOperationException;
+import org.opencastproject.workflow.api.WorkflowOperationHandler;
 import org.opencastproject.workflow.api.WorkflowOperationInstance;
 import org.opencastproject.workflow.api.WorkflowOperationResult;
 import org.opencastproject.workflow.api.WorkflowOperationResult.Action;
@@ -59,6 +62,10 @@ import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.osgi.service.component.ComponentContext;
+import org.osgi.service.component.annotations.Activate;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Deactivate;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.xml.sax.SAXException;
@@ -68,6 +75,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -75,6 +83,14 @@ import java.util.Map;
 
 import javax.xml.bind.JAXBException;
 
+@Component(
+    immediate = true,
+    service = WorkflowOperationHandler.class,
+    property = {
+        "service.description=Video Editor Workflow Operation Handler",
+        "workflow.operation=editor"
+    }
+)
 public class VideoEditorWorkflowOperationHandler extends ResumableWorkflowOperationHandlerBase {
 
   private static final Logger logger = LoggerFactory.getLogger(VideoEditorWorkflowOperationHandler.class);
@@ -129,6 +145,7 @@ public class VideoEditorWorkflowOperationHandler extends ResumableWorkflowOperat
   private Workspace workspace;
 
   @Override
+  @Activate
   public void activate(ComponentContext cc) {
     super.activate(cc);
     setHoldActionTitle("Review / VideoEdit");
@@ -136,12 +153,12 @@ public class VideoEditorWorkflowOperationHandler extends ResumableWorkflowOperat
     logger.info("Registering videoEditor hold state ui from classpath {}", HOLD_UI_PATH);
   }
 
-  /**
-   * {@inheritDoc}
-   *
-   * @see org.opencastproject.workflow.api.WorkflowOperationHandler#start(org.opencastproject.workflow.api.WorkflowInstance,
-   *      JobContext)
-   */
+  @Deactivate
+  @Override
+  public void deactivate() {
+    super.deactivate();
+  }
+
   @Override
   public WorkflowOperationResult start(WorkflowInstance workflowInstance, JobContext context)
           throws WorkflowOperationException {
@@ -258,8 +275,9 @@ public class VideoEditorWorkflowOperationHandler extends ResumableWorkflowOperat
     Catalog[] targetSmilCatalogs = mp.getCatalogs(targetSmilFlavor);
     if (targetSmilCatalogs == null || targetSmilCatalogs.length == 0) {
 
-      if (!interactive && !skipProcessing) // create a smil even if not interactive
+      if (!interactive && !skipProcessing) { // create a smil even if not interactive
         return skip(workflowInstance, context);
+      }
 
       // Create new empty SMIL to fill it from editor UI
       try {
@@ -285,8 +303,9 @@ public class VideoEditorWorkflowOperationHandler extends ResumableWorkflowOperat
                 ex);
       }
 
-      if (!interactive) // deferred skip, keep empty smil
+      if (!interactive) { // deferred skip, keep empty smil
         return skip(workflowInstance, context);
+      }
       logger.info("Holding for video edit...");
       return createResult(mp, Action.PAUSE);
     } else {
@@ -295,12 +314,6 @@ public class VideoEditorWorkflowOperationHandler extends ResumableWorkflowOperat
     }
   }
 
-  /**
-   * {@inheritDoc}
-   *
-   * @see org.opencastproject.workflow.api.AbstractWorkflowOperationHandler#skip(org.opencastproject.workflow.api.WorkflowInstance,
-   *      JobContext)
-   */
   @Override
   public WorkflowOperationResult skip(WorkflowInstance workflowInstance, JobContext context)
           throws WorkflowOperationException {
@@ -309,14 +322,17 @@ public class VideoEditorWorkflowOperationHandler extends ResumableWorkflowOperat
     logger.info("Skip video editor operation for mediapackage {}", mp.getIdentifier().toString());
 
     // Get configuration
+    // Check which tags have been configured
+    ConfiguredTagsAndFlavors tagsAndFlavors = getTagsAndFlavors(workflowInstance,
+        Configuration.none, Configuration.many, Configuration.none, Configuration.none);
     WorkflowOperationInstance worflowOperationInstance = workflowInstance.getCurrentOperation();
+    List <MediaPackageElementFlavor> fallbackSourceFlavor = new ArrayList<MediaPackageElementFlavor>();
     String sourceTrackFlavorsProperty = StringUtils
             .trimToNull(worflowOperationInstance.getConfiguration(SKIPPED_FLAVORS_PROPERTY));
     if (sourceTrackFlavorsProperty == null || sourceTrackFlavorsProperty.isEmpty()) {
       logger.info("\"{}\" option not set, use value of \"{}\"", SKIPPED_FLAVORS_PROPERTY, SOURCE_FLAVORS_PROPERTY);
-      sourceTrackFlavorsProperty = StringUtils
-              .trimToNull(worflowOperationInstance.getConfiguration(SOURCE_FLAVORS_PROPERTY));
-      if (sourceTrackFlavorsProperty == null) {
+      fallbackSourceFlavor = tagsAndFlavors.getSrcFlavors();
+      if (fallbackSourceFlavor.isEmpty()) {
         throw new WorkflowOperationException(
                 format("Required configuration property %s not set.", SOURCE_FLAVORS_PROPERTY));
       }
@@ -324,8 +340,9 @@ public class VideoEditorWorkflowOperationHandler extends ResumableWorkflowOperat
     // processing will operate directly on source tracks as named in smil file
     final boolean skipProcessing = BooleanUtils
             .toBoolean(worflowOperationInstance.getConfiguration(SKIP_PROCESSING_PROPERTY));
-    if (skipProcessing)
+    if (skipProcessing) {
       return createResult(mp, Action.SKIP);
+    }
     // If not skipProcessing (set it up for process-smil), then clone and tag to target
     String targetFlavorSubTypeProperty = StringUtils
             .trimToNull(worflowOperationInstance.getConfiguration(TARGET_FLAVOR_SUBTYPE_PROPERTY));
@@ -336,9 +353,16 @@ public class VideoEditorWorkflowOperationHandler extends ResumableWorkflowOperat
 
     // Get source tracks
     TrackSelector trackSelector = new TrackSelector();
-    for (String flavor : asList(sourceTrackFlavorsProperty)) {
-      trackSelector.addFlavor(flavor);
+    if (sourceTrackFlavorsProperty != null && !sourceTrackFlavorsProperty.isEmpty()) {
+      for (String flavor : asList(sourceTrackFlavorsProperty)) {
+        trackSelector.addFlavor(flavor);
+      }
+    } else {
+      for (MediaPackageElementFlavor flavor : fallbackSourceFlavor) {
+        trackSelector.addFlavor(flavor);
+      }
     }
+
     Collection<Track> sourceTracks = trackSelector.select(mp, false);
 
     for (Track sourceTrack : sourceTracks) {
@@ -355,12 +379,6 @@ public class VideoEditorWorkflowOperationHandler extends ResumableWorkflowOperat
     return createResult(mp, Action.SKIP);
   }
 
-  /**
-   * {@inheritDoc}
-   *
-   * @see org.opencastproject.workflow.api.ResumableWorkflowOperationHandler#resume(org.opencastproject.workflow.api.WorkflowInstance,
-   *      JobContext, java.util.Map)
-   */
   @Override
   public WorkflowOperationResult resume(WorkflowInstance workflowInstance, JobContext context,
           Map<String, String> properties) throws WorkflowOperationException {
@@ -488,8 +506,9 @@ public class VideoEditorWorkflowOperationHandler extends ResumableWorkflowOperat
           case 1:
             // If the whole duration was not defined in the mediapackage, we cannot tell whether or not this PAR
             // component represents the whole duration or not, therefore we don't bother to try
-            if (mp.getDuration() < 0)
+            if (mp.getDuration() < 0) {
               break;
+            }
 
             SmilMediaContainer parElement = (SmilMediaContainer) filteredSmil.getBody().getMediaElements().get(0);
             boolean skip = true;
@@ -619,15 +638,25 @@ public class VideoEditorWorkflowOperationHandler extends ResumableWorkflowOperat
     return smilResponse.getSmil();
   }
 
+  @Reference
   public void setSmilService(SmilService smilService) {
     this.smilService = smilService;
   }
 
+  @Reference
   public void setVideoEditorService(VideoEditorService editor) {
     videoEditorService = editor;
   }
 
+  @Reference
   public void setWorkspace(Workspace workspace) {
     this.workspace = workspace;
   }
+
+  @Reference
+  @Override
+  public void setServiceRegistry(ServiceRegistry serviceRegistry) {
+    super.setServiceRegistry(serviceRegistry);
+  }
+
 }

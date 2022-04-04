@@ -37,6 +37,8 @@ import org.opencastproject.util.doc.rest.RestResponse;
 import org.opencastproject.util.doc.rest.RestService;
 
 import org.apache.commons.lang3.StringUtils;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,7 +55,22 @@ import javax.ws.rs.core.Response;
  * The REST endpoint for the {@link CropService} service.
  */
 @Path("")
-@RestService(name = "crop", title = "Video CROP Service", abstractText = "This service is not ready", notes = "This is a note")
+@RestService(
+    name = "crop",
+    title = "Video CROP Service",
+    abstractText = "This service is not ready",
+    notes = "This is a note"
+)
+@Component(
+    immediate = true,
+    service = CropRestEndpoint.class,
+    property = {
+        "service.description=Video Crop REST Endpoint",
+        "opencast.service.type=org.opencastproject.crop",
+        "opencast.service.path=/crop",
+        "opencast.service.jobproducer=true"
+    }
+)
 public class CropRestEndpoint extends AbstractJobProducerEndpoint {
   /**
    * The logger
@@ -80,6 +97,7 @@ public class CropRestEndpoint extends AbstractJobProducerEndpoint {
    *
    * @param serviceRegistry the service registry
    */
+  @Reference
   protected void setServiceRegistry(ServiceRegistry serviceRegistry) {
     this.serviceRegistry = serviceRegistry;
   }
@@ -89,6 +107,7 @@ public class CropRestEndpoint extends AbstractJobProducerEndpoint {
    *
    * @param cropService the cropper
    */
+  @Reference
   protected void setCropService(CropService cropService) {
     this.cropService = cropService;
   }
@@ -96,19 +115,45 @@ public class CropRestEndpoint extends AbstractJobProducerEndpoint {
   @POST
   @Path("")
   @Produces(MediaType.TEXT_XML)
-  @RestQuery(name = "crop", description = "Submit a track for cropping", restParameters = {
-          @RestParameter(description = "The track to crop.", isRequired = true, name = "track", type = RestParameter.Type.FILE) }, responses = {
-          @RestResponse(description = "The job ID to use when polling for the resulting mpeg7 catalog.", responseCode = HttpServletResponse.SC_OK),
-          @RestResponse(description = "The \"crop\" is NULL or not a valid track type.", responseCode = HttpServletResponse.SC_BAD_REQUEST),
-          @RestResponse(description = "The underlying service could not crop the video.", responseCode = HttpServletResponse.SC_INTERNAL_SERVER_ERROR) }, returnDescription = "The job ID to use when polling for the resulting mpeg7 catalog.")
+  @RestQuery(
+      name = "crop",
+      description = "Submit a track for cropping",
+      restParameters = {
+          @RestParameter(
+              description = "The track to crop.",
+              isRequired = true,
+              name = "track",
+              type = RestParameter.Type.FILE
+          )
+      },
+      responses = {
+          @RestResponse(
+              description = "The job ID to use when polling for the resulting mpeg7 catalog.",
+              responseCode = HttpServletResponse.SC_OK
+          ),
+          @RestResponse(
+              description = "The \"crop\" is NULL or not a valid track type.",
+              responseCode = HttpServletResponse.SC_BAD_REQUEST
+          ),
+          @RestResponse(
+              description = "The underlying service could not crop the video.",
+              responseCode = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
+          )
+      },
+      returnDescription = "The job ID to use when polling for the resulting mpeg7 catalog."
+  )
   public Response crop(@FormParam("track") String trackAsXml) throws Exception {
     if (StringUtils.isBlank(trackAsXml)) {
-      return Response.status(Response.Status.BAD_REQUEST).entity("track must not be null").build();
+      return Response.status(Response.Status.BAD_REQUEST)
+          .entity("track must not be null")
+          .build();
     }
 
     MediaPackageElement sourceTrack = MediaPackageElementParser.getFromXml(trackAsXml);
     if (!Track.TYPE.equals(sourceTrack.getElementType())) {
-      return Response.status(Response.Status.BAD_REQUEST).entity("mediapackage element must be of type track").build();
+      return Response.status(Response.Status.BAD_REQUEST)
+          .entity("mediapackage element must be of type track")
+          .build();
     }
 
     try {

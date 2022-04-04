@@ -27,21 +27,21 @@ import static com.entwinemedia.fn.data.json.Jsons.obj;
 import static com.entwinemedia.fn.data.json.Jsons.v;
 import static org.apache.commons.lang3.StringUtils.defaultString;
 import static org.apache.commons.lang3.exception.ExceptionUtils.getMessage;
-import static org.opencastproject.matterhorn.search.SearchQuery.Order.Descending;
 import static org.opencastproject.util.doc.rest.RestParameter.Type.BOOLEAN;
 import static org.opencastproject.util.doc.rest.RestParameter.Type.INTEGER;
 import static org.opencastproject.util.doc.rest.RestParameter.Type.STRING;
+import static org.opencastproject.util.requests.SortCriterion.Order.Descending;
 
 import org.opencastproject.external.common.ApiMediaType;
 import org.opencastproject.external.common.ApiResponses;
 import org.opencastproject.index.service.util.RestUtils;
-import org.opencastproject.matterhorn.search.SortCriterion;
 import org.opencastproject.util.NotFoundException;
 import org.opencastproject.util.RestUtil;
 import org.opencastproject.util.doc.rest.RestParameter;
 import org.opencastproject.util.doc.rest.RestQuery;
 import org.opencastproject.util.doc.rest.RestResponse;
 import org.opencastproject.util.doc.rest.RestService;
+import org.opencastproject.util.requests.SortCriterion;
 import org.opencastproject.workflow.api.RetryStrategy;
 import org.opencastproject.workflow.api.WorkflowDatabaseException;
 import org.opencastproject.workflow.api.WorkflowDefinition;
@@ -56,6 +56,9 @@ import org.apache.commons.collections4.comparators.ComparatorChain;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.osgi.service.component.ComponentContext;
+import org.osgi.service.component.annotations.Activate;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -77,9 +80,19 @@ import javax.ws.rs.core.Response;
 
 @Path("/")
 @Produces({ ApiMediaType.JSON, ApiMediaType.VERSION_1_1_0, ApiMediaType.VERSION_1_2_0, ApiMediaType.VERSION_1_3_0,
-            ApiMediaType.VERSION_1_4_0, ApiMediaType.VERSION_1_5_0 })
+            ApiMediaType.VERSION_1_4_0, ApiMediaType.VERSION_1_5_0, ApiMediaType.VERSION_1_6_0,
+            ApiMediaType.VERSION_1_7_0 })
 @RestService(name = "externalapiworkflowdefinitions", title = "External API Workflow Definitions Service", notes = {},
              abstractText = "Provides resources and operations related to the workflow definitions")
+@Component(
+    immediate = true,
+    service = WorkflowDefinitionsEndpoint.class,
+    property = {
+        "service.description=External API - Workflow Definitions Endpoint",
+        "opencast.service.type=org.opencastproject.external.workflows.definitions",
+        "opencast.service.path=/api/workflow-definitions"
+    }
+)
 public class WorkflowDefinitionsEndpoint {
 
   /**
@@ -102,6 +115,7 @@ public class WorkflowDefinitionsEndpoint {
   /**
    * OSGi DI
    */
+  @Reference
   public void setWorkflowService(WorkflowService workflowService) {
     this.workflowService = workflowService;
   }
@@ -109,6 +123,7 @@ public class WorkflowDefinitionsEndpoint {
   /**
    * OSGi activation method
    */
+  @Activate
   void activate(ComponentContext cc) {
     logger.info("Activating External API - Workflow Definitions Endpoint");
   }

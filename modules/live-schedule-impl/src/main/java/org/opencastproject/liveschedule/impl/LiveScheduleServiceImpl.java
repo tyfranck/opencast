@@ -59,6 +59,10 @@ import org.opencastproject.security.api.AclScope;
 import org.opencastproject.security.api.AuthorizationService;
 import org.opencastproject.security.api.Organization;
 import org.opencastproject.security.api.OrganizationDirectoryService;
+import org.opencastproject.security.api.SecurityService;
+import org.opencastproject.security.api.UnauthorizedException;
+import org.opencastproject.security.api.User;
+import org.opencastproject.security.util.SecurityUtil;
 import org.opencastproject.series.api.SeriesService;
 import org.opencastproject.serviceregistry.api.ServiceRegistry;
 import org.opencastproject.util.MimeTypes;
@@ -74,6 +78,11 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.http.client.utils.URIUtils;
 import org.osgi.framework.BundleContext;
 import org.osgi.service.component.ComponentContext;
+import org.osgi.service.component.annotations.Activate;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
+import org.osgi.service.component.annotations.ReferenceCardinality;
+import org.osgi.service.component.annotations.ReferencePolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -97,10 +106,14 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+@Component(
+    immediate = true,
+    service = LiveScheduleService.class,
+    property = {
+        "service.description=Live Schedule Service"
+    }
+)
 public class LiveScheduleServiceImpl implements LiveScheduleService {
-
-  // TODO Implement updated() so that change in configuration can be dynamically loaded.
-
   /** The server url property **/
   static final String SERVER_URL_PROPERTY = "org.opencastproject.server.url";
   /** The engage base url property **/
@@ -115,11 +128,14 @@ public class LiveScheduleServiceImpl implements LiveScheduleService {
   private static final String DEFAULT_LIVE_TARGET_FLAVORS = "presenter/delivery";
   static final String DEFAULT_LIVE_DISTRIBUTION_SERVICE = "download";
 
+  // Deactivating checkstyle to preserve the long URL
+  // CHECKSTYLE:OFF
   // If the capture agent registered this property, we expect to get a resolution and
   // a url in the following format:
   // capture.device.live.resolution.WIDTHxHEIGHT=COMPLETE_STREAMING_URL e.g.
   // capture.device.live.resolution.960x270=rtmp://cp398121.live.edgefcs.net/live/dev-epiphan005-2-presenter-delivery.stream-960x270_1_200@355694
   public static final String CA_PROPERTY_RESOLUTION_URL_PREFIX = "capture.device.live.resolution.";
+  // CHECKSTYLE:ON
 
   /** Variables that can be replaced in stream name */
   public static final String REPLACE_ID = "id";
@@ -145,9 +161,11 @@ public class LiveScheduleServiceImpl implements LiveScheduleService {
   private MediaPackageElementFlavor[] liveFlavors;
   private String distributionServiceType = DEFAULT_LIVE_DISTRIBUTION_SERVICE;
   private String serverUrl;
-  private Cache<String, Version> snapshotVersionCache = CacheBuilder.newBuilder().expireAfterWrite(5, TimeUnit.MINUTES).build();
+  private Cache<String, Version> snapshotVersionCache
+      = CacheBuilder.newBuilder().expireAfterWrite(5, TimeUnit.MINUTES).build();
   /** Which streaming formats should be published automatically */
   private List<String> publishedStreamingFormats = null;
+  private String systemUserName;
 
   /** Services */
   private DownloadDistributionService downloadDistributionService; // to distribute episode and series catalogs
@@ -160,6 +178,7 @@ public class LiveScheduleServiceImpl implements LiveScheduleService {
   private AssetManager assetManager; // to get current media package
   private AuthorizationService authService;
   private OrganizationDirectoryService organizationService;
+  private SecurityService securityService;
 
   private long jobPollingInterval = JobBarrier.DEFAULT_POLLING_INTERVAL;
 
@@ -169,14 +188,17 @@ public class LiveScheduleServiceImpl implements LiveScheduleService {
    * @param context
    *          the component context
    */
+  @Activate
   protected void activate(ComponentContext context) {
     BundleContext bundleContext = context.getBundleContext();
 
     serverUrl = StringUtils.trimToNull(bundleContext.getProperty(SERVER_URL_PROPERTY));
-    if (serverUrl == null)
+    if (serverUrl == null) {
       logger.warn("Server url was not set in '{}'", SERVER_URL_PROPERTY);
-    else
+    } else {
       logger.info("Server url is {}", serverUrl);
+    }
+    systemUserName = bundleContext.getProperty(SecurityUtil.PROPERTY_KEY_SYS_USER);
 
     @SuppressWarnings("rawtypes")
     Dictionary properties = context.getProperties();
@@ -217,8 +239,9 @@ public class LiveScheduleServiceImpl implements LiveScheduleService {
     String[] flavorArray = StringUtils.split(flavors, ",");
     liveFlavors = new MediaPackageElementFlavor[flavorArray.length];
     int i = 0;
-    for (String f : flavorArray)
+    for (String f : flavorArray) {
       liveFlavors[i++] = MediaPackageElementFlavor.parseFlavor(f);
+    }
 
     if (!StringUtils.isBlank((String) properties.get(LIVE_DISTRIBUTION_SERVICE))) {
       distributionServiceType = StringUtils.trimToEmpty((String) properties.get(LIVE_DISTRIBUTION_SERVICE));
@@ -227,8 +250,8 @@ public class LiveScheduleServiceImpl implements LiveScheduleService {
             (String)properties.get(LIVE_PUBLISH_STREAMING), ",")).orElse(new String[0]));
 
     logger.info(
-            "Configured live stream name: {}, mime type: {}, resolution: {}, target flavors: {}, distribution service: {}",
-            streamName, streamMimeType, resolution, flavors, distributionServiceType);
+        "Configured live stream name: {}, mime type: {}, resolution: {}, target flavors: {}, distribution service: {}",
+        streamName, streamMimeType, resolution, flavors, distributionServiceType);
   }
 
   @Override
@@ -304,8 +327,9 @@ public class LiveScheduleServiceImpl implements LiveScheduleService {
       // Add and distribute catalogs/acl, this creates a new mp object
       MediaPackage mp = addAndDistributeElements(snapshot);
       // Add tracks from tempMp
-      for (Track t : tempMp.getTracks())
+      for (Track t : tempMp.getTracks()) {
         mp.add(t);
+      }
       // Publish mp to engage search index
       publish(mp);
       // Add engage-live publication channel to archived mp
@@ -353,8 +377,9 @@ public class LiveScheduleServiceImpl implements LiveScheduleService {
     // Add and distribute catalogs/acl, this creates a new mp
     MediaPackage mp = addAndDistributeElements(snapshot);
     // Add tracks from tempMp
-    for (Track t : tempMp.getTracks())
+    for (Track t : tempMp.getTracks()) {
       mp.add(t);
+    }
     // Remove publication element that came with the snapshot mp
     removeLivePublicationChannel(mp);
     // Publish mp to engage search index
@@ -382,7 +407,7 @@ public class LiveScheduleServiceImpl implements LiveScheduleService {
     Publication[] publications = mediaPackage.getPublications();
     for (Publication publication : publications) {
       if (publication.getChannel().equals(CHANNEL_ID)) {
-          createOrUpdatePublicationTracks(publication, generatedTracks);
+        createOrUpdatePublicationTracks(publication, generatedTracks);
       }
     }
   }
@@ -411,8 +436,9 @@ public class LiveScheduleServiceImpl implements LiveScheduleService {
       // Add media package to the search index
       logger.info("Publishing LIVE media package {} to search index", mp);
       Job publishJob = searchService.add(mp);
-      if (!waitForStatus(publishJob).isSuccess())
+      if (!waitForStatus(publishJob).isSuccess()) {
         throw new LiveScheduleException("Live media package " + mp.getIdentifier() + " could not be published");
+      }
     } catch (LiveScheduleException e) {
       throw e;
     } catch (Exception e) {
@@ -431,13 +457,15 @@ public class LiveScheduleServiceImpl implements LiveScheduleService {
       jobs.add(searchService.delete(mpId));
       // Retract elements
       for (MediaPackageElement mpe : mp.getElements()) {
-        if (!MediaPackageElement.Type.Publication.equals(mpe.getElementType()))
+        if (!MediaPackageElement.Type.Publication.equals(mpe.getElementType())) {
           elementIds.add(mpe.getIdentifier());
+        }
       }
       jobs.add(downloadDistributionService.retract(CHANNEL_ID, mp, elementIds));
 
-      if (!waitForStatus(jobs.toArray(new Job[jobs.size()])).isSuccess())
+      if (!waitForStatus(jobs.toArray(new Job[jobs.size()])).isSuccess()) {
         throw new LiveScheduleException("Removing live media package from search did not complete successfully");
+      }
     } catch (LiveScheduleException e) {
       throw e;
     } catch (Exception e) {
@@ -455,17 +483,28 @@ public class LiveScheduleServiceImpl implements LiveScheduleService {
    *           if found many media packages with the same id
    */
   MediaPackage getMediaPackageFromSearch(String mediaPackageId) throws LiveScheduleException {
-    // Look for the media package in the search index
-    SearchQuery query = new SearchQuery().withId(mediaPackageId);
-    SearchResult result = searchService.getByQuery(query);
-    if (result.size() == 0) {
-      logger.debug("The search service doesn't know live mediapackage {}", mediaPackageId);
+    // Issue #2504: make sure the search index is read by admin so that the media package is always found.
+    Organization org = securityService.getOrganization();
+    User prevUser = org != null ? securityService.getUser() : null;
+    securityService.setUser(SecurityUtil.createSystemUser(systemUserName, org));
+    try {
+      // Look for the media package in the search index
+      SearchQuery query = new SearchQuery().withId(mediaPackageId);
+      SearchResult result = searchService.getForAdministrativeRead(query);
+      if (result.size() == 0) {
+        logger.debug("The search service doesn't know live mediapackage {}", mediaPackageId);
+        return null;
+      } else if (result.size() > 1) {
+        logger.warn("More than one live mediapackage with id {} returned from search service", mediaPackageId);
+        throw new LiveScheduleException("More than one live mediapackage with id " + mediaPackageId + " found");
+      }
+      return result.getItems()[0].getMediaPackage();
+    } catch (UnauthorizedException e) {
+      logger.warn("Unexpected unauthorized exception when querying the search index for mp {}", mediaPackageId, e);
       return null;
-    } else if (result.size() > 1) {
-      logger.warn("More than one live mediapackage with id {} returned from search service", mediaPackageId);
-      throw new LiveScheduleException("More than one live mediapackage with id " + mediaPackageId + " found");
+    } finally {
+      securityService.setUser(prevUser);
     }
-    return result.getItems()[0].getMediaPackage();
   }
 
   void setDuration(MediaPackage mp, DublinCoreCatalog dc) {
@@ -507,9 +546,10 @@ public class LiveScheduleServiceImpl implements LiveScheduleService {
       // Capture agent did not pass any CA_PROPERTY_RESOLUTION_URL_PREFIX property when registering
       // so use the service configuration
       if (mp.getTracks().length == 0) {
-        if (liveStreamingUrl == null)
+        if (liveStreamingUrl == null) {
           throw new LiveScheduleException(
                   "Cannot build live tracks because '" + LIVE_STREAMING_URL + "' configuration was not set.");
+        }
 
         for (MediaPackageElementFlavor flavor : liveFlavors) {
           for (int i = 0; i < streamResolution.length; i++) {
@@ -586,23 +626,21 @@ public class LiveScheduleServiceImpl implements LiveScheduleService {
 
   private boolean isLive(MediaPackage mp) {
     Track[] tracks = mp.getTracks();
-    if (tracks != null)
-      for (Track track : tracks)
-        if (track.isLive())
+    if (tracks != null) {
+      for (Track track : tracks) {
+        if (track.isLive()) {
           return true;
+        }
+      }
+    }
 
     return false;
   }
 
-  /*
-   * public void setDublinCoreService(DublinCoreCatalogService service) { this.dublinCoreService = service; }
-   *
-   * public void setWorkspace(Workspace workspace) { this.workspace = workspace; }
-   */
-
   private JobBarrier.Result waitForStatus(Job... jobs) throws IllegalStateException, IllegalArgumentException {
-    if (serviceRegistry == null)
+    if (serviceRegistry == null) {
       throw new IllegalStateException("Can't wait for job status without providing a service registry first");
+    }
     JobBarrier barrier = new JobBarrier(null, serviceRegistry, jobPollingInterval, jobs);
     return barrier.waitForJobs();
   }
@@ -641,16 +679,19 @@ public class LiveScheduleServiceImpl implements LiveScheduleService {
         elementIds.add(catalog.getIdentifier());
       }
 
-      if (mp.getCatalogs(MediaPackageElements.EPISODE).length > 0)
+      if (mp.getCatalogs(MediaPackageElements.EPISODE).length > 0) {
         elementIds.add(mp.getCatalogs(MediaPackageElements.EPISODE)[0].getIdentifier());
-      if (mp.getAttachments(MediaPackageElements.XACML_POLICY_EPISODE).length > 0)
+      }
+      if (mp.getAttachments(MediaPackageElements.XACML_POLICY_EPISODE).length > 0) {
         elementIds.add(mp.getAttachments(MediaPackageElements.XACML_POLICY_EPISODE)[0].getIdentifier());
+      }
 
       // Distribute element(s)
       Job distributionJob = downloadDistributionService.distribute(CHANNEL_ID, mp, elementIds, false);
-      if (!waitForStatus(distributionJob).isSuccess())
+      if (!waitForStatus(distributionJob).isSuccess()) {
         throw new LiveScheduleException(
                 "Element(s) for live media package " + mp.getIdentifier() + " could not be distributed");
+      }
 
       for (String id : elementIds) {
         MediaPackageElement e = mp.getElementById(id);
@@ -662,8 +703,9 @@ public class LiveScheduleServiceImpl implements LiveScheduleService {
       // Add distributed element(s) to mp
       List<MediaPackageElement> distributedElements = (List<MediaPackageElement>) MediaPackageElementParser
               .getArrayFromXml(distributionJob.getPayload());
-      for (MediaPackageElement mpe : distributedElements)
+      for (MediaPackageElement mpe : distributedElements) {
         mp.add(mpe);
+      }
 
       return mp;
     } catch (LiveScheduleException e) {
@@ -680,8 +722,9 @@ public class LiveScheduleServiceImpl implements LiveScheduleService {
 
       // Remove previous Acl from the mp
       Attachment[] atts = mp.getAttachments(MediaPackageElements.XACML_POLICY_EPISODE);
-      if (atts.length > 0)
+      if (atts.length > 0) {
         mp.remove(atts[0]);
+      }
 
       // Attach current ACL to mp, acl will be created in the ws/wfr
       authService.setAcl(mp, AclScope.Episode, acl);
@@ -690,9 +733,10 @@ public class LiveScheduleServiceImpl implements LiveScheduleService {
         String aclId = atts[0].getIdentifier();
         // Distribute new acl
         Job distributionJob = downloadDistributionService.distribute(CHANNEL_ID, mp, aclId, false);
-        if (!waitForStatus(distributionJob).isSuccess())
+        if (!waitForStatus(distributionJob).isSuccess()) {
           throw new LiveScheduleException(
                   "Acl for live media package " + mp.getIdentifier() + " could not be distributed");
+        }
 
         MediaPackageElement e = mp.getElementById(aclId);
         // Cleanup workspace/wfr
@@ -710,7 +754,11 @@ public class LiveScheduleServiceImpl implements LiveScheduleService {
     }
   }
 
-  void addLivePublicationChannel(Organization currentOrg, MediaPackage mp, Map<String, Track> generatedTracks) throws LiveScheduleException {
+  void addLivePublicationChannel(
+      Organization currentOrg,
+      MediaPackage mp,
+      Map<String, Track> generatedTracks
+  ) throws LiveScheduleException {
     logger.debug("Adding live channel publication element to media package {}", mp);
     String engageUrlString = null;
     if (currentOrg != null) {
@@ -719,8 +767,8 @@ public class LiveScheduleServiceImpl implements LiveScheduleService {
     if (engageUrlString == null) {
       engageUrlString = serverUrl;
       logger.info(
-              "Using 'server.url' as a fallback for the non-existing organization level key '{}' for the publication url",
-              ENGAGE_URL_PROPERTY);
+          "Using 'server.url' as a fallback for the non-existing organization level key '{}' for the publication url",
+          ENGAGE_URL_PROPERTY);
     }
 
     try {
@@ -740,8 +788,9 @@ public class LiveScheduleServiceImpl implements LiveScheduleService {
     Publication[] publications = mp.getPublications();
     if (publications != null) {
       for (Publication publication : publications) {
-        if (CHANNEL_ID.equals(publication.getChannel()))
+        if (CHANNEL_ID.equals(publication.getChannel())) {
           mp.remove(publication);
+        }
       }
     }
   }
@@ -755,8 +804,9 @@ public class LiveScheduleServiceImpl implements LiveScheduleService {
   private boolean isSameTrackArray(Track[] previous, Track[] current) {
     Set<Track> previousTracks = new HashSet<Track>(Arrays.asList(previous));
     Set<Track> currentTracks = new HashSet<Track>(Arrays.asList(current));
-    if (previousTracks.size() != currentTracks.size())
+    if (previousTracks.size() != currentTracks.size()) {
       return false;
+    }
     for (Track tp : previousTracks) {
       Iterator<Track> it = currentTracks.iterator();
       while (it.hasNext()) {
@@ -767,8 +817,9 @@ public class LiveScheduleServiceImpl implements LiveScheduleService {
         }
       }
     }
-    if (currentTracks.size() > 0)
+    if (currentTracks.size() > 0) {
       return false;
+    }
 
     return true;
   }
@@ -798,69 +849,98 @@ public class LiveScheduleServiceImpl implements LiveScheduleService {
           for (MediaPackageElement newElement : newMp.getElements()) {
             if (element.getURI().equals(newElement.getURI())) {
               logger.debug(
-                      "Not retracting element {} with URI {} from download distribution because it is still used by updated live media package",
-                      element.getIdentifier(), element.getURI());
+                  "Not retracting element {} with URI {} from download distribution because it is "
+                      + "still used by updated live media package",
+                  element.getIdentifier(), element.getURI());
               canBeDeleted = false;
               break;
             }
           }
-          if (canBeDeleted)
+          if (canBeDeleted) {
             elementIds.add(element.getIdentifier());
+          }
         }
       }
       if (elementIds.size() > 0) {
         Job job = downloadDistributionService.retract(CHANNEL_ID, previousMp, elementIds);
         // Wait for retraction to finish
-        if (!waitForStatus(job).isSuccess())
+        if (!waitForStatus(job).isSuccess()) {
           logger.warn("One of the download retract jobs did not complete successfully");
-        else
+        } else {
           logger.debug("Retraction of previously published elements complete");
+        }
       }
     } catch (DistributionException e) {
       throw new LiveScheduleException(e);
     }
   }
 
-  // === Set by OSGI - begin
+  @Reference
   public void setDublinCoreService(DublinCoreCatalogService service) {
     this.dublinCoreService = service;
   }
 
+  @Reference
   public void setSearchService(SearchService service) {
     this.searchService = service;
   }
 
+  @Reference
   public void setSeriesService(SeriesService service) {
     this.seriesService = service;
   }
 
+  @Reference
   public void setServiceRegistry(ServiceRegistry service) {
     this.serviceRegistry = service;
   }
 
+  @Reference
   public void setCaptureAgentService(CaptureAgentStateService service) {
     this.captureAgentService = service;
   }
 
+  @Reference(
+      cardinality = ReferenceCardinality.AT_LEAST_ONE,
+      policy = ReferencePolicy.DYNAMIC,
+      unbind = "unsetDownloadDistributionService"
+  )
   public void setDownloadDistributionService(DownloadDistributionService service) {
-    if (distributionServiceType.equalsIgnoreCase(service.getDistributionType()))
+    if (distributionServiceType.equalsIgnoreCase(service.getDistributionType())) {
       this.downloadDistributionService = service;
+    }
   }
 
+  public void unsetDownloadDistributionService(DownloadDistributionService service) {
+    if (distributionServiceType.equalsIgnoreCase(service.getDistributionType())
+        && downloadDistributionService.equals(service)) {
+      this.downloadDistributionService = null;
+    }
+  }
+
+  @Reference
   public void setWorkspace(Workspace ws) {
     this.workspace = ws;
   }
 
+  @Reference
   public void setAssetManager(AssetManager assetManager) {
     this.assetManager = assetManager;
   }
 
+  @Reference
   public void setAuthorizationService(AuthorizationService service) {
     this.authService = service;
   }
 
+  @Reference
   public void setOrganizationService(OrganizationDirectoryService service) {
     this.organizationService = service;
+  }
+
+  @Reference
+  public void setSecurityService(SecurityService service) {
+    this.securityService = service;
   }
   // === Set by OSGI - end
 

@@ -7,7 +7,7 @@
   <parent>
     <groupId>org.opencastproject</groupId>
     <artifactId>base</artifactId>
-    <version>10-SNAPSHOT</version>
+    <version>12-SNAPSHOT</version>
     <relativePath>../../pom.xml</relativePath>
   </parent>
   <properties>
@@ -18,7 +18,7 @@
     <!-- osgi support -->
     <dependency>
       <groupId>org.osgi</groupId>
-      <artifactId>org.osgi.compendium</artifactId>
+      <artifactId>osgi.cmpn</artifactId>
     </dependency>
     <!-- opencast -->
     <dependency>
@@ -89,17 +89,17 @@
     <dependency>
       <!-- we use this for the transitive dependency to elasticsearch -->
       <groupId>org.opencastproject</groupId>
-      <artifactId>opencast-search-api</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.opencastproject</groupId>
-      <artifactId>opencast-search</artifactId>
+      <artifactId>opencast-elasticsearch-api</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>org.opencastproject</groupId>
       <artifactId>opencast-common-jpa-impl</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.opencastproject</groupId>
+      <artifactId>opencast-elasticsearch-index</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
@@ -112,11 +112,6 @@
       <artifactId>opencast-list-providers-service</artifactId>
       <version>${project.version}</version>
       <scope>provided</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.opencastproject</groupId>
-      <artifactId>opencast-external-api-index</artifactId>
-      <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.commons</groupId>
@@ -137,6 +132,11 @@
     <dependency>
       <groupId>org.apache.httpcomponents</groupId>
       <artifactId>httpcore-osgi</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.httpcomponents</groupId>
+      <artifactId>httpcore</artifactId>
+      <version>${httpcomponents-httpcore.version}</version>
     </dependency>
     <dependency>
       <groupId>joda-time</groupId>
@@ -178,12 +178,6 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>org.opencastproject</groupId>
-      <artifactId>opencast-distribution-workflowoperation</artifactId>
-      <version>${project.version}</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
       <groupId>uk.co.datumedge</groupId>
       <artifactId>hamcrest-json</artifactId>
       <version>0.2</version>
@@ -204,6 +198,20 @@
   <build>
     <plugins>
       <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <extensions>true</extensions>
+        <configuration>
+          <ignoredUnusedDeclaredDependencies>
+            <!-- provide a logger for tests -->
+            <ignoredUnusedDeclaredDependency>org.slf4j:slf4j-log4j12</ignoredUnusedDeclaredDependency>
+            <ignoredUnusedDeclaredDependency>org.opencastproject:opencast-list-providers-service</ignoredUnusedDeclaredDependency>
+            <ignoredUnusedDeclaredDependency>org.apache.httpcomponents:httpcore</ignoredUnusedDeclaredDependency>
+            <ignoredUnusedDeclaredDependency>org.apache.httpcomponents:httpcore-osgi</ignoredUnusedDeclaredDependency>
+          </ignoredUnusedDeclaredDependencies>
+        </configuration>
+      </plugin>
+      <plugin>
         <groupId>org.apache.felix</groupId>
         <artifactId>maven-bundle-plugin</artifactId>
         <extensions>true</extensions>
@@ -212,8 +220,7 @@
             <Bundle-SymbolicName>${project.artifactId}</Bundle-SymbolicName>
             <Build-Number>${buildNumber}</Build-Number>
             <Import-Package>
-              org.opencastproject.external.index,
-              org.opencastproject.matterhorn.search.impl;version=${project.version},
+              org.opencastproject.elasticsearch.impl;version=${project.version},
               org.opencastproject.rest;version=${project.version},
               org.opencastproject.index.service.message,
               org.opencastproject.metadata.dublincore;version=${project.version},
@@ -243,18 +250,8 @@
               org.opencastproject.external.endpoint,
               org.opencastproject.external.userdirectory
             </Export-Package>
-            <Service-Component>
-              OSGI-INF/external-base-endpoint.xml,
-              OSGI-INF/external-capture-agents-endpoint.xml,
-              OSGI-INF/external-events-endpoint.xml,
-              OSGI-INF/external-group-loader.xml,
-              OSGI-INF/external-groups-endpoint.xml,
-              OSGI-INF/external-security-endpoint.xml,
-              OSGI-INF/external-series-endpoint.xml,
-              OSGI-INF/external-statistics-endpoint.xml,
-              OSGI-INF/external-workflow-definitions-endpoint.xml,
-              OSGI-INF/external-workflows-endpoint.xml
-            </Service-Component>
+            <!-- The option is needed because there are still services that are not DS. e.g. CatalogUIAdapters -->
+            <_dsannotations-options>norequirements</_dsannotations-options>
           </instructions>
         </configuration>
       </plugin>

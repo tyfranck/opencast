@@ -25,7 +25,9 @@ import org.opencastproject.job.api.Job;
 import org.opencastproject.job.api.JobParser;
 import org.opencastproject.mediapackage.MediaPackageElementParser;
 import org.opencastproject.mediapackage.Track;
+import org.opencastproject.security.api.TrustedHttpClient;
 import org.opencastproject.serviceregistry.api.RemoteBase;
+import org.opencastproject.serviceregistry.api.ServiceRegistry;
 import org.opencastproject.videogrid.api.VideoGridService;
 import org.opencastproject.videogrid.api.VideoGridServiceException;
 
@@ -37,6 +39,8 @@ import org.apache.http.NameValuePair;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.message.BasicNameValuePair;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,6 +49,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+@Component(
+    immediate = true,
+    service = VideoGridService.class,
+    property = {
+        "service.description=Remote Video Grid Service"
+    }
+)
 public class VideoGridServiceRemoteImpl extends RemoteBase implements VideoGridService {
 
   private static final Logger logger = LoggerFactory.getLogger(VideoGridServiceRemoteImpl.class);
@@ -57,22 +68,23 @@ public class VideoGridServiceRemoteImpl extends RemoteBase implements VideoGridS
   }
 
   @Override
-  public Job createPartialTracks(List<List<String>> commands, Track... tracks)
+  public Job createPartialTrack(List<String> command, Track... tracks)
           throws VideoGridServiceException, EncoderException {
 
     // serialize arguments and metadata
-    String commandsJson = gson.toJson(commands);
+    String commandJson = gson.toJson(command);
 
     // Build form parameters
     List<NameValuePair> params = new ArrayList<>();
     try {
-      params.add(new BasicNameValuePair("commands", commandsJson));
-      params.add(new BasicNameValuePair("sourceTracks", MediaPackageElementParser.getArrayAsXml(Arrays.asList(tracks))));
+      params.add(new BasicNameValuePair("command", commandJson));
+      params.add(
+              new BasicNameValuePair("sourceTracks", MediaPackageElementParser.getArrayAsXml(Arrays.asList(tracks))));
     } catch (Exception e) {
       throw new EncoderException(e);
     }
 
-    logger.info("Video-gridding {}", commandsJson);
+    logger.info("Video-gridding {}", commandJson);
     HttpResponse response = null;
     try {
       HttpPost post = new HttpPost("/videogrid");
@@ -82,7 +94,7 @@ public class VideoGridServiceRemoteImpl extends RemoteBase implements VideoGridS
         throw new VideoGridServiceException("No response from service");
       }
       Job receipt = JobParser.parseJob(response.getEntity().getContent());
-      logger.info("Completed video-gridding {}", commands);
+      logger.info("Completed video-gridding {}", command);
       return receipt;
     } catch (IOException e) {
       throw new VideoGridServiceException("Failed building service request", e);
@@ -90,4 +102,17 @@ public class VideoGridServiceRemoteImpl extends RemoteBase implements VideoGridS
       closeConnection(response);
     }
   }
+
+  @Reference
+  @Override
+  public void setTrustedHttpClient(TrustedHttpClient trustedHttpClient) {
+    super.setTrustedHttpClient(trustedHttpClient);
+  }
+
+  @Reference
+  @Override
+  public void setRemoteServiceManager(ServiceRegistry serviceRegistry) {
+    super.setRemoteServiceManager(serviceRegistry);
+  }
+
 }

@@ -20,24 +20,29 @@
  */
 package org.opencastproject.workflow.handler.distribution;
 
-import static com.entwinemedia.fn.fns.Strings.trimToNone;
 import static java.lang.String.format;
 import static org.opencastproject.util.JobUtil.waitForJobs;
-import static org.opencastproject.util.data.Collections.set;
 
 import org.opencastproject.job.api.Job;
 import org.opencastproject.job.api.JobContext;
 import org.opencastproject.mediapackage.MediaPackage;
+import org.opencastproject.mediapackage.MediaPackageElementFlavor;
 import org.opencastproject.mediapackage.MediaPackageException;
 import org.opencastproject.publication.api.OaiPmhPublicationService;
 import org.opencastproject.publication.api.PublicationException;
-import org.opencastproject.util.data.Collections;
+import org.opencastproject.serviceregistry.api.ServiceRegistry;
 import org.opencastproject.workflow.api.AbstractWorkflowOperationHandler;
+import org.opencastproject.workflow.api.ConfiguredTagsAndFlavors;
 import org.opencastproject.workflow.api.WorkflowInstance;
 import org.opencastproject.workflow.api.WorkflowOperationException;
+import org.opencastproject.workflow.api.WorkflowOperationHandler;
 import org.opencastproject.workflow.api.WorkflowOperationResult;
 import org.opencastproject.workflow.api.WorkflowOperationResult.Action;
 
+import org.osgi.service.component.ComponentContext;
+import org.osgi.service.component.annotations.Activate;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,6 +51,14 @@ import java.util.List;
 import java.util.Set;
 
 /** Workflow operation for handling "republish" operations to OAI-PMH repositories. */
+@Component(
+    immediate = true,
+    service = WorkflowOperationHandler.class,
+    property = {
+        "service.description=Republish OAI-PMH Workflow Operation Handler",
+        "workflow.operation=republish-oaipmh"
+    }
+)
 public final class RepublishOaiPmhWorkflowOperationHandler extends AbstractWorkflowOperationHandler {
   /** Logging facility */
   private static final Logger logger = LoggerFactory.getLogger(RepublishOaiPmhWorkflowOperationHandler.class);
@@ -57,19 +70,26 @@ public final class RepublishOaiPmhWorkflowOperationHandler extends AbstractWorkf
   private static final String OPT_SOURCE_TAGS = "source-tags";
   private static final String OPT_REPOSITORY = "repository";
 
+  @Activate
+  @Override
+  public void activate(ComponentContext cc) {
+    super.activate(cc);
+  }
+
   @Override
   public WorkflowOperationResult start(WorkflowInstance wi, JobContext context) throws WorkflowOperationException {
     final MediaPackage mp = wi.getMediaPackage();
     // The flavors of the elements that are to be published
     final Set<String> flavors = new HashSet<>();
     // Check which flavors have been configured
-    final List<String> configuredFlavors = getOptConfig(wi, OPT_SOURCE_FLAVORS).bind(trimToNone).map(asList.toFn())
-            .getOr(Collections.<String> nil());
-    for (String flavor : configuredFlavors) {
-      flavors.add(flavor);
+    ConfiguredTagsAndFlavors tagsAndFlavors = getTagsAndFlavors(wi,
+        Configuration.many, Configuration.many, Configuration.none, Configuration.none);
+    final List<MediaPackageElementFlavor> configuredFlavors = tagsAndFlavors.getSrcFlavors();
+    for (MediaPackageElementFlavor flavor : configuredFlavors) {
+      flavors.add(flavor.toString());
     }
     // Get the configured tags
-    final Set<String> tags = set(getOptConfig(wi, OPT_SOURCE_TAGS).getOr(""));
+    final Set<String> tags = new HashSet<String>(tagsAndFlavors.getSrcTags());
     // repository
     final String repository = getConfig(wi, OPT_REPOSITORY);
 
@@ -99,8 +119,15 @@ public final class RepublishOaiPmhWorkflowOperationHandler extends AbstractWorkf
   }
 
   /** OSGI DI */
+  @Reference
   public void setOaiPmhPublicationService(OaiPmhPublicationService oaiPmhPublicationService) {
     this.oaiPmhPublicationService = oaiPmhPublicationService;
+  }
+
+  @Reference
+  @Override
+  public void setServiceRegistry(ServiceRegistry serviceRegistry) {
+    super.setServiceRegistry(serviceRegistry);
   }
 
 }

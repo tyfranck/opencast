@@ -33,10 +33,13 @@ import org.opencastproject.mediapackage.MediaPackageElementFlavor;
 import org.opencastproject.mediapackage.MediaPackageElementParser;
 import org.opencastproject.mediapackage.MediaPackageException;
 import org.opencastproject.mediapackage.Track;
+import org.opencastproject.serviceregistry.api.ServiceRegistry;
 import org.opencastproject.util.NotFoundException;
 import org.opencastproject.workflow.api.AbstractWorkflowOperationHandler;
+import org.opencastproject.workflow.api.ConfiguredTagsAndFlavors;
 import org.opencastproject.workflow.api.WorkflowInstance;
 import org.opencastproject.workflow.api.WorkflowOperationException;
+import org.opencastproject.workflow.api.WorkflowOperationHandler;
 import org.opencastproject.workflow.api.WorkflowOperationInstance;
 import org.opencastproject.workflow.api.WorkflowOperationResult;
 import org.opencastproject.workflow.api.WorkflowOperationResult.Action;
@@ -44,14 +47,17 @@ import org.opencastproject.workflow.api.WorkflowOperationResultImpl;
 import org.opencastproject.workspace.api.Workspace;
 
 import org.apache.commons.lang3.StringUtils;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -63,6 +69,14 @@ import java.util.Set;
 /**
  * Runs an operation multiple times with each MediaPackageElement matching the characteristics
  */
+@Component(
+    immediate = true,
+    service = WorkflowOperationHandler.class,
+    property = {
+        "service.description=Execute Many Workflow Operation Handler",
+        "workflow.operation=execute-many"
+    }
+)
 public class ExecuteManyWorkflowOperationHandler extends AbstractWorkflowOperationHandler {
 
   /** The logging facility */
@@ -145,25 +159,27 @@ public class ExecuteManyWorkflowOperationHandler extends AbstractWorkflowOperati
                 description);
       }
     }
-    String sourceFlavor = StringUtils.trimToNull(operation.getConfiguration(SOURCE_FLAVOR_PROPERTY));
-    String sourceTags = StringUtils.trimToNull(operation.getConfiguration(SOURCE_TAGS_PROPERTY));
+    ConfiguredTagsAndFlavors tagsAndFlavors = getTagsAndFlavors(workflowInstance,
+        Configuration.many, Configuration.many, Configuration.many, Configuration.many);
+    List<MediaPackageElementFlavor> sourceFlavor = tagsAndFlavors.getSrcFlavors();
+    List<String> sourceTagList = tagsAndFlavors.getSrcTags();
     String sourceAudio = StringUtils.trimToNull(operation.getConfiguration(SOURCE_AUDIO_PROPERTY));
     String sourceVideo = StringUtils.trimToNull(operation.getConfiguration(SOURCE_VIDEO_PROPERTY));
-    String targetFlavorStr = StringUtils.trimToNull(operation.getConfiguration(TARGET_FLAVOR_PROPERTY));
-    String targetTags = StringUtils.trimToNull(operation.getConfiguration(TARGET_TAGS_PROPERTY));
+    List<MediaPackageElementFlavor> targetFlavorList = tagsAndFlavors.getTargetFlavors();
+    List<String> targetTags = tagsAndFlavors.getTargetTags();
     String outputFilename = StringUtils.trimToNull(operation.getConfiguration(OUTPUT_FILENAME_PROPERTY));
     String expectedTypeStr = StringUtils.trimToNull(operation.getConfiguration(EXPECTED_TYPE_PROPERTY));
 
     boolean setWfProps = Boolean.valueOf(StringUtils.trimToNull(operation.getConfiguration(SET_WF_PROPS_PROPERTY)));
 
     MediaPackageElementFlavor matchingFlavor = null;
-    if (sourceFlavor != null)
-      matchingFlavor = MediaPackageElementFlavor.parseFlavor(sourceFlavor);
+    if (!sourceFlavor.isEmpty())
+      matchingFlavor = sourceFlavor.get(0);
 
     // Unmarshall target flavor
     MediaPackageElementFlavor targetFlavor = null;
-    if (targetFlavorStr != null)
-      targetFlavor = MediaPackageElementFlavor.parseFlavor(targetFlavorStr);
+    if (!targetFlavorList.isEmpty())
+      targetFlavor = targetFlavorList.get(0);
 
     // Unmarshall expected mediapackage element type
     MediaPackageElement.Type expectedType = null;
@@ -177,8 +193,6 @@ public class ExecuteManyWorkflowOperationHandler extends AbstractWorkflowOperati
       if (expectedType == null)
         throw new WorkflowOperationException("'" + expectedTypeStr + "' is not a valid element type");
     }
-
-    List<String> sourceTagList = asList(sourceTags);
 
     // Select the tracks based on source flavors and tags
     Set<MediaPackageElement> inputSet = new HashSet<>();
@@ -203,7 +217,7 @@ public class ExecuteManyWorkflowOperationHandler extends AbstractWorkflowOperati
 
     if (inputSet.size() == 0) {
       logger.warn("Mediapackage {} has no suitable elements to execute the command {} based on tags {}, flavor {}, sourceAudio {}, sourceVideo {}",
-              mediaPackage, exec, sourceTags, sourceFlavor, sourceAudio, sourceVideo);
+              mediaPackage, exec, sourceTagList, sourceFlavor, sourceAudio, sourceVideo);
       return createResult(mediaPackage, Action.CONTINUE);
     }
 
@@ -255,8 +269,8 @@ public class ExecuteManyWorkflowOperationHandler extends AbstractWorkflowOperati
             // The job payload is a file with set of properties for the workflow
             final Properties properties = new Properties();
             File propertiesFile = workspace.get(resultElements[i].getURI());
-            try (InputStream is = new FileInputStream(propertiesFile)) {
-              properties.load(is);
+            try (InputStreamReader reader = new InputStreamReader(new FileInputStream(propertiesFile), StandardCharsets.UTF_8)) {
+              properties.load(reader);
             }
             logger.debug("Loaded {} properties from {}", properties.size(), propertiesFile);
             workspace.deleteFromCollection(ExecuteService.COLLECTION, propertiesFile.getName());
@@ -275,15 +289,29 @@ public class ExecuteManyWorkflowOperationHandler extends AbstractWorkflowOperati
             resultElements[i].setURI(uri);
 
             // Set new flavor
-            if (targetFlavor != null)
-              resultElements[i].setFlavor(targetFlavor);
+            if (targetFlavor != null) {
+              String targetFlavorType = targetFlavor.getType();
+              String targetFlavorSubtype = targetFlavor.getSubtype();
+
+              if (MediaPackageElementFlavor.WILDCARD.equals(targetFlavorType)) {
+                targetFlavorType = inputElements[i].getFlavor().getType();
+              }
+
+              if (MediaPackageElementFlavor.WILDCARD.equals(targetFlavorSubtype)) {
+                targetFlavorSubtype = inputElements[i].getFlavor().getSubtype();
+              }
+
+              String resolvedTargetFlavorStr =
+                  targetFlavorType + MediaPackageElementFlavor.SEPARATOR + targetFlavorSubtype;
+              resultElements[i].setFlavor(MediaPackageElementFlavor.parseFlavor(resolvedTargetFlavorStr));
+            }
           }
         }
 
         // Set new tags
         if (targetTags != null) {
           // Assume the tags starting with "-" means we want to eliminate such tags form the result element
-          for (String tag : asList(targetTags)) {
+          for (String tag : targetTags) {
             if (tag.startsWith("-"))
               // We remove the tag resulting from stripping all the '-' characters at the beginning of the tag
               resultElements[i].removeTag(tag.replaceAll("^-+", ""));
@@ -344,6 +372,7 @@ public class ExecuteManyWorkflowOperationHandler extends AbstractWorkflowOperati
    *
    * @param service
    */
+  @Reference
   public void setExecuteService(ExecuteService service) {
     executeService = service;
   }
@@ -353,6 +382,7 @@ public class ExecuteManyWorkflowOperationHandler extends AbstractWorkflowOperati
    *
    * @param workspace
    */
+  @Reference
   public void setWorkspace(Workspace workspace) {
     this.workspace = workspace;
   }
@@ -363,7 +393,15 @@ public class ExecuteManyWorkflowOperationHandler extends AbstractWorkflowOperati
    * @param mediaInspectionService
    *          an instance of the media inspection service
    */
+  @Reference
   protected void setMediaInspectionService(MediaInspectionService mediaInspectionService) {
     inspectionService = mediaInspectionService;
   }
+
+  @Reference
+  @Override
+  public void setServiceRegistry(ServiceRegistry serviceRegistry) {
+    super.setServiceRegistry(serviceRegistry);
+  }
+
 }

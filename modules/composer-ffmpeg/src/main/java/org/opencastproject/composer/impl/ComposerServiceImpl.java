@@ -490,41 +490,66 @@ public class ComposerServiceImpl extends AbstractJobProducer implements Composer
     // List of encoded tracks
     LinkedList<Track> encodedTracks = new LinkedList<>();
     // Do the work
-    int i = 0;
     Map<String, File> source = new HashMap<>();
     source.put("video", mediaFile);
     List<File> outputFiles = encoderEngine.process(source, profile, properties);
+    var returnURLs = new ArrayList<URI>();
     activeEncoder.remove(encoderEngine);
-    for (File encodingOutput: outputFiles) {
-      // Put the file in the workspace
-      URI returnURL;
-      final String targetTrackId = IdImpl.fromUUID().toString();
-
-      try (InputStream in = new FileInputStream(encodingOutput)) {
-        returnURL = workspace.putInCollection(COLLECTION,
-                job.getId() + "-" + i + "." + FilenameUtils.getExtension(encodingOutput.getAbsolutePath()), in);
-        logger.info("Copied the encoded file to the workspace at {}", returnURL);
-        if (encodingOutput.delete()) {
-          logger.info("Deleted the local copy of the encoded file at {}", encodingOutput.getAbsolutePath());
-        } else {
-          logger.warn("Unable to delete the encoding output at {}", encodingOutput);
+    int i = 0;
+    var fileMapping = new HashMap<String, String>();
+    for (File file: outputFiles) {
+      fileMapping.put(file.getName(), job.getId() + "_" + i + "." + FilenameUtils.getExtension(file.getName()));
+      i++;
+    }
+    boolean isHLS = false;
+    for (File file: outputFiles) {
+      // Rewrite HLS references if necessary
+      if (AdaptivePlaylist.isPlaylist(file)) {
+        isHLS = true;
+        logger.debug("Rewriting HLS references in {}", file);
+        try {
+          AdaptivePlaylist.hlsRewriteFileReference(file, fileMapping);
+        } catch (IOException e) {
+          throw new EncoderException("Unable to rewrite HLS references", e);
         }
+      }
+
+      // Put the file in the workspace
+      try (InputStream in = new FileInputStream(file)) {
+        var filename = fileMapping.get(file.getName());
+        var url = workspace.putInCollection(COLLECTION, filename, in);
+        returnURLs.add(url);
+        logger.info("Copied the encoded file to the workspace at {}", url);
       } catch (Exception e) {
         throw new EncoderException("Unable to put the encoded file into the workspace", e);
       }
+    }
 
-      // Have the encoded track inspected and return the result
-      Track inspectedTrack = inspect(job, returnURL);
+    // Have the encoded track inspected and return the result
+    final List<String> tags = profile.getTags();
+    for (Track inspectedTrack: inspect(job, returnURLs)) {
+      final String targetTrackId = IdImpl.fromUUID().toString();
       inspectedTrack.setIdentifier(targetTrackId);
 
-      List<String> tags = profile.getTags();
-      for (String tag : tags) {
-        if (encodingOutput.getName().endsWith(profile.getSuffix(tag)))
+      for (final String tag : tags) {
+        if (inspectedTrack.getURI().getPath().endsWith(profile.getSuffix(tag))) {
           inspectedTrack.addTag(tag);
+        }
+      }
+      if (isHLS) {
+        AdaptivePlaylist.setLogicalName(inspectedTrack);
       }
 
       encodedTracks.add(inspectedTrack);
-      i++;
+    }
+
+    // Clean up workspace
+    for (File encodingOutput: outputFiles) {
+      if (encodingOutput.delete()) {
+        logger.info("Deleted the local copy of the encoded file at {}", encodingOutput.getAbsolutePath());
+      } else {
+        logger.warn("Unable to delete the encoding output at {}", encodingOutput);
+      }
     }
 
     return encodedTracks;
@@ -971,6 +996,9 @@ public class ComposerServiceImpl extends AbstractJobProducer implements Composer
           MediaPackageException {
     try {
       final EncodingProfile profile = profileScanner.getProfile(profileId);
+      if (profile == null) {
+        throw new MediaPackageException(String.format("Encoding profile %s not found", profileId));
+      }
       return serviceRegistry.createJob(JOB_TYPE, Operation.ImageToVideo.toString(), Arrays.asList(
               profileId, MediaPackageElementParser.getAsXml(sourceImageAttachment), Double.toString(time)),
               profile.getJobLoad());
@@ -1196,9 +1224,14 @@ public class ComposerServiceImpl extends AbstractJobProducer implements Composer
     cleanup(videoFile);
 
     MediaPackageElementBuilder builder = MediaPackageElementBuilderFactory.newInstance().newElementBuilder();
-    List<Attachment> imageAttachments = new LinkedList<Attachment>();
+    List<Attachment> imageAttachments = new LinkedList<>();
     for (URI url : workspaceURIs) {
       Attachment attachment = (Attachment) builder.elementFromURI(url, Attachment.TYPE, null);
+      try {
+        attachment.setSize(workspace.get(url).length());
+      } catch (NotFoundException | IOException e) {
+        logger.warn("Could not get file size of {}", url);
+      }
       imageAttachments.add(attachment);
     }
 
@@ -1340,6 +1373,7 @@ public class ComposerServiceImpl extends AbstractJobProducer implements Composer
 
         MediaPackageElementBuilder builder = MediaPackageElementBuilderFactory.newInstance().newElementBuilder();
         Attachment convertedImage = (Attachment) builder.elementFromURI(workspaceURI, Attachment.TYPE, null);
+        convertedImage.setSize(output.length());
         convertedImage.setIdentifier(IdImpl.fromUUID().toString());
         try {
           convertedImage.setMimeType(MimeTypes.fromURI(convertedImage.getURI()));
@@ -1881,7 +1915,7 @@ public class ComposerServiceImpl extends AbstractJobProducer implements Composer
    * @param mediaInspectionService
    *          an instance of the media inspection service
    */
-  @Reference(name = "inspection-service")
+  @Reference
   protected void setMediaInspectionService(MediaInspectionService mediaInspectionService) {
     this.inspectionService = mediaInspectionService;
   }
@@ -1892,7 +1926,7 @@ public class ComposerServiceImpl extends AbstractJobProducer implements Composer
    * @param workspace
    *          an instance of the workspace
    */
-  @Reference(name = "workspace")
+  @Reference
   protected void setWorkspace(Workspace workspace) {
     this.workspace = workspace;
   }
@@ -1903,7 +1937,7 @@ public class ComposerServiceImpl extends AbstractJobProducer implements Composer
    * @param serviceRegistry
    *          the service registry
    */
-  @Reference(name = "serviceRegistry")
+  @Reference
   protected void setServiceRegistry(ServiceRegistry serviceRegistry) {
     this.serviceRegistry = serviceRegistry;
   }
@@ -1924,7 +1958,7 @@ public class ComposerServiceImpl extends AbstractJobProducer implements Composer
    * @param scanner
    *          the profile scanner
    */
-  @Reference(name = "profileScanner")
+  @Reference
   protected void setProfileScanner(EncodingProfileScanner scanner) {
     this.profileScanner = scanner;
   }
@@ -1935,7 +1969,7 @@ public class ComposerServiceImpl extends AbstractJobProducer implements Composer
    * @param securityService
    *          the securityService to set
    */
-  @Reference(name = "security-service")
+  @Reference
   public void setSecurityService(SecurityService securityService) {
     this.securityService = securityService;
   }
@@ -1946,7 +1980,7 @@ public class ComposerServiceImpl extends AbstractJobProducer implements Composer
    * @param userDirectoryService
    *          the userDirectoryService to set
    */
-  @Reference(name = "user-directory")
+  @Reference
   public void setUserDirectoryService(UserDirectoryService userDirectoryService) {
     this.userDirectoryService = userDirectoryService;
   }
@@ -1957,7 +1991,7 @@ public class ComposerServiceImpl extends AbstractJobProducer implements Composer
    * @param organizationDirectory
    *          the organization directory
    */
-  @Reference(name = "orgDirectory")
+  @Reference
   public void setOrganizationDirectoryService(OrganizationDirectoryService organizationDirectory) {
     this.organizationDirectoryService = organizationDirectory;
   }
@@ -1972,7 +2006,7 @@ public class ComposerServiceImpl extends AbstractJobProducer implements Composer
     return securityService;
   }
 
-  @Reference(name = "smil-service")
+  @Reference
   public void setSmilService(SmilService smilService) {
     this.smilService = smilService;
   }
@@ -1997,7 +2031,7 @@ public class ComposerServiceImpl extends AbstractJobProducer implements Composer
     return organizationDirectoryService;
   }
 
-  @Reference(name = "profilesReadyIndicator", target = "(artifact=encodingprofile)")
+  @Reference(target = "(artifact=encodingprofile)")
   public void setEncodingProfileReadinessIndicator(ReadinessIndicator unused) {
     //  Wait for the encoding profiles to load
   }

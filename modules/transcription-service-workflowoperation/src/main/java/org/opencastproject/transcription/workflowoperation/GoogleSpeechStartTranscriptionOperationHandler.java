@@ -28,24 +28,39 @@ import org.opencastproject.mediapackage.MediaPackageElementFlavor;
 import org.opencastproject.mediapackage.Track;
 import org.opencastproject.mediapackage.selector.AbstractMediaPackageElementSelector;
 import org.opencastproject.mediapackage.selector.TrackSelector;
+import org.opencastproject.serviceregistry.api.ServiceRegistry;
 import org.opencastproject.transcription.api.TranscriptionService;
 import org.opencastproject.transcription.api.TranscriptionServiceException;
 import org.opencastproject.workflow.api.AbstractWorkflowOperationHandler;
+import org.opencastproject.workflow.api.ConfiguredTagsAndFlavors;
 import org.opencastproject.workflow.api.WorkflowInstance;
 import org.opencastproject.workflow.api.WorkflowOperationException;
+import org.opencastproject.workflow.api.WorkflowOperationHandler;
 import org.opencastproject.workflow.api.WorkflowOperationInstance;
 import org.opencastproject.workflow.api.WorkflowOperationResult;
 import org.opencastproject.workflow.api.WorkflowOperationResult.Action;
 
 import org.apache.commons.lang3.StringUtils;
 import org.osgi.service.component.ComponentContext;
+import org.osgi.service.component.annotations.Activate;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
+@Component(
+    immediate = true,
+    service = WorkflowOperationHandler.class,
+    property = {
+        "service.description=Start Google Speech Transcription Workflow Operation Handler",
+        "workflow.operation=google-speech-start-transcription"
+    }
+)
 public class GoogleSpeechStartTranscriptionOperationHandler extends AbstractWorkflowOperationHandler {
 
   /**
@@ -86,6 +101,7 @@ public class GoogleSpeechStartTranscriptionOperationHandler extends AbstractWork
   }
 
   @Override
+  @Activate
   protected void activate(ComponentContext cc) {
     super.activate(cc);
   }
@@ -120,29 +136,27 @@ public class GoogleSpeechStartTranscriptionOperationHandler extends AbstractWork
     String langCode = operation.getConfiguration(LANGUAGE_CODE);
 
     // Check which tags have been configured
-    String sourceTagOption = operation.getConfiguration(SOURCE_TAG);
-    String sourceFlavorOption = operation.getConfiguration(SOURCE_FLAVOR);
+    ConfiguredTagsAndFlavors tagsAndFlavors = getTagsAndFlavors(
+        workflowInstance, Configuration.many, Configuration.many, Configuration.none, Configuration.none);
+    List<String> sourceTagOption = tagsAndFlavors.getSrcTags();
+    List<MediaPackageElementFlavor> sourceFlavorOption = tagsAndFlavors.getSrcFlavors();
 
     AbstractMediaPackageElementSelector<Track> elementSelector = new TrackSelector();
 
     // Make sure either one of tags or flavors are provided
-    if (StringUtils.isBlank(sourceTagOption) && StringUtils.isBlank(sourceFlavorOption)) {
+    if (sourceTagOption.isEmpty() && sourceFlavorOption.isEmpty()) {
       throw new WorkflowOperationException("No source tag or flavor have been specified!");
     }
 
-    if (StringUtils.isNotBlank(sourceFlavorOption)) {
-      String flavor = StringUtils.trim(sourceFlavorOption);
-      try {
-        elementSelector.addFlavor(MediaPackageElementFlavor.parseFlavor(flavor));
-      } catch (IllegalArgumentException e) {
-        throw new WorkflowOperationException("Source flavor '" + flavor + "' is malformed");
-      }
+    if (!sourceFlavorOption.isEmpty()) {
+      MediaPackageElementFlavor flavor = sourceFlavorOption.get(0);
+      elementSelector.addFlavor(flavor);
     }
     if (StringUtils.isNotBlank(langCode)) {
       language = StringUtils.trim(langCode);
     }
-    if (StringUtils.isNotBlank(sourceTagOption)) {
-      elementSelector.addTag(StringUtils.trim(sourceTagOption));
+    if (!sourceTagOption.isEmpty()) {
+      elementSelector.addTag(sourceTagOption.get(0));
     }
 
     Collection<Track> elements = elementSelector.select(mediaPackage, false);
@@ -178,8 +192,15 @@ public class GoogleSpeechStartTranscriptionOperationHandler extends AbstractWork
     return createResult(Action.CONTINUE);
   }
 
+  @Reference(target = "(provider=google.speech)")
   public void setTranscriptionService(TranscriptionService service) {
     this.service = service;
+  }
+
+  @Reference
+  @Override
+  public void setServiceRegistry(ServiceRegistry serviceRegistry) {
+    super.setServiceRegistry(serviceRegistry);
   }
 
 }

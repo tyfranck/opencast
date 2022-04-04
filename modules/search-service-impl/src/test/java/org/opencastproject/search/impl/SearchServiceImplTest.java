@@ -165,12 +165,9 @@ public class SearchServiceImplTest {
     EntityManager em = emf.createEntityManager();
     // workspace
     Workspace workspace = EasyMock.createNiceMock(Workspace.class);
-    EasyMock.expect(workspace.read((URI) EasyMock.anyObject())).andAnswer(new IAnswer<InputStream>() {
-      @Override
-      public InputStream answer() throws Throwable {
-        return new FileInputStream(new File(new URI(EasyMock.getCurrentArguments()[0].toString())));
-      }
-    }).anyTimes();
+    EasyMock.expect(workspace.read(EasyMock.anyObject(URI.class)))
+        .andAnswer(() -> new FileInputStream(((URI)EasyMock.getCurrentArguments()[0]).getPath()))
+        .anyTimes();
     EasyMock.replay(workspace);
 
     // User, organization and service registry
@@ -426,10 +423,10 @@ public class SearchServiceImplTest {
     assertEquals(olderTitle, service.getByQuery(query).getItems()[0].getDcTitle());
     query.withSort(SearchQuery.Sort.DATE_CREATED, false);
     assertEquals(newerTitle, service.getByQuery(query).getItems()[0].getDcTitle());
-    // FYI: DATE_PUBLISHED is the time of Search update, not DC modified (MH-10573)
-    query.withSort(SearchQuery.Sort.DATE_PUBLISHED);
+    // FYI: DATE_MODIFIED is the time of Search update, not DC modified (MH-10573)
+    query.withSort(SearchQuery.Sort.DATE_MODIFIED);
     assertEquals(newerTitle, service.getByQuery(query).getItems()[0].getDcTitle());
-    query.withSort(SearchQuery.Sort.DATE_PUBLISHED, false);
+    query.withSort(SearchQuery.Sort.DATE_MODIFIED, false);
     assertEquals(olderTitle, service.getByQuery(query).getItems()[0].getDcTitle());
     SearchQuery q = new SearchQuery();
     q.withSort(SearchQuery.Sort.TITLE);

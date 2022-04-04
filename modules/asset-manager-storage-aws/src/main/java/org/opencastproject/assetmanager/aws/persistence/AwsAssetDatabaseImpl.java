@@ -21,7 +21,7 @@
 
 package org.opencastproject.assetmanager.aws.persistence;
 
-import org.opencastproject.assetmanager.impl.storage.StoragePath;
+import org.opencastproject.assetmanager.api.storage.StoragePath;
 
 import org.osgi.service.component.ComponentContext;
 import org.osgi.service.component.annotations.Activate;
@@ -37,11 +37,11 @@ import java.util.List;
 import javax.persistence.EntityManagerFactory;
 
 @Component(
-  property = {
+    property = {
     "service.description=Aws S3 File Archive Persistence"
-  },
-  immediate = false,
-  service = { AwsAssetDatabase.class }
+    },
+    immediate = false,
+    service = { AwsAssetDatabase.class }
 )
 public class AwsAssetDatabaseImpl implements AwsAssetDatabase {
 
@@ -66,7 +66,7 @@ public class AwsAssetDatabaseImpl implements AwsAssetDatabase {
   }
 
   /** OSGi DI */
-  @Reference(name = "entityManagerFactory", target = "(osgi.unit.name=org.opencastproject.assetmanager.aws.persistence)")
+  @Reference(target = "(osgi.unit.name=org.opencastproject.assetmanager.aws.persistence)")
   public void setEntityManagerFactory(EntityManagerFactory emf) {
     this.emf = emf;
   }
@@ -76,8 +76,9 @@ public class AwsAssetDatabaseImpl implements AwsAssetDatabase {
           throws AwsAssetDatabaseException {
     AwsAssetMappingDto dto = AwsAssetMappingDto.storeMapping(emf.createEntityManager(), path, objectKey,
             objectVersion);
-    if (dto != null)
+    if (dto != null) {
       return dto.toAWSArchiveMapping();
+    }
     return null;
   }
 
@@ -89,8 +90,9 @@ public class AwsAssetDatabaseImpl implements AwsAssetDatabase {
   @Override
   public AwsAssetMapping findMapping(StoragePath path) throws AwsAssetDatabaseException {
     AwsAssetMappingDto dto = AwsAssetMappingDto.findMapping(emf.createEntityManager(), path);
-    if (dto != null)
+    if (dto != null) {
       return dto.toAWSArchiveMapping();
+    }
     return null;
   }
 

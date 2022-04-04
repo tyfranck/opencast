@@ -88,8 +88,8 @@ import java.util.concurrent.Executors;
  * Implements {@link SeriesServiceIndex}.
  */
 @Component(
-  immediate = true,
-  service = { SeriesServiceIndex.class }
+    immediate = true,
+    service = { SeriesServiceIndex.class }
 )
 public class SeriesServiceSolrIndex implements SeriesServiceIndex {
 
@@ -148,7 +148,7 @@ public class SeriesServiceSolrIndex implements SeriesServiceIndex {
    * @param dcService
    *          {@link DublinCoreCatalogService} object
    */
-  @Reference(name = "dc")
+  @Reference
   public void setDublinCoreService(DublinCoreCatalogService dcService) {
     this.dcService = dcService;
   }
@@ -159,7 +159,7 @@ public class SeriesServiceSolrIndex implements SeriesServiceIndex {
    * @param securityService
    *          the securityService to set
    */
-  @Reference(name = "security-service")
+  @Reference
   public void setSecurityService(SecurityService securityService) {
     this.securityService = securityService;
   }
@@ -174,8 +174,9 @@ public class SeriesServiceSolrIndex implements SeriesServiceIndex {
   public void activate(ComponentContext cc) {
 
     if (cc == null) {
-      if (solrRoot == null)
+      if (solrRoot == null) {
         throw new IllegalStateException("Storage dir must be set");
+      }
       // default to synchronous indexing
       synchronousIndexing = true;
     } else {
@@ -677,10 +678,12 @@ public class SeriesServiceSolrIndex implements SeriesServiceIndex {
     if (sb.length() > 0) {
       sb.append(" AND ");
     }
-    if (startDate == null)
+    if (startDate == null) {
       startDate = new Date(0);
-    if (endDate == null)
+    }
+    if (endDate == null) {
       endDate = new Date(Long.MAX_VALUE);
+    }
     sb.append(key);
     sb.append(":");
     sb.append(SolrUtils.serializeDateRange(option(startDate), option(endDate)));

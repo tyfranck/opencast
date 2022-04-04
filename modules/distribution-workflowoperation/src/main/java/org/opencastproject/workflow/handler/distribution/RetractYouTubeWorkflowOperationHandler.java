@@ -28,19 +28,32 @@ import org.opencastproject.mediapackage.MediaPackage;
 import org.opencastproject.mediapackage.MediaPackageElementParser;
 import org.opencastproject.mediapackage.Publication;
 import org.opencastproject.publication.api.YouTubePublicationService;
+import org.opencastproject.serviceregistry.api.ServiceRegistry;
 import org.opencastproject.workflow.api.AbstractWorkflowOperationHandler;
 import org.opencastproject.workflow.api.WorkflowInstance;
 import org.opencastproject.workflow.api.WorkflowOperationException;
+import org.opencastproject.workflow.api.WorkflowOperationHandler;
 import org.opencastproject.workflow.api.WorkflowOperationResult;
 import org.opencastproject.workflow.api.WorkflowOperationResult.Action;
 
 import org.osgi.service.component.ComponentContext;
+import org.osgi.service.component.annotations.Activate;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Workflow operation for retracting a media package from youtube publication channel.
  */
+@Component(
+    immediate = true,
+    service = WorkflowOperationHandler.class,
+    property = {
+        "service.description=Youtube Retraction Workflow Operation Handler",
+        "workflow.operation=retract-youtube"
+    }
+)
 public class RetractYouTubeWorkflowOperationHandler extends AbstractWorkflowOperationHandler {
 
   private static final Logger logger = LoggerFactory.getLogger(RetractYouTubeWorkflowOperationHandler.class);
@@ -54,16 +67,19 @@ public class RetractYouTubeWorkflowOperationHandler extends AbstractWorkflowOper
    * @param publicationService
    *          the publication service
    */
+  @Reference
   public void setPublicationService(YouTubePublicationService publicationService) {
     this.publicationService = publicationService;
   }
 
-  /**
-   * {@inheritDoc}
-   *
-   * @see org.opencastproject.workflow.api.AbstractWorkflowOperationHandler#activate(org.osgi.service.component.ComponentContext)
-   */
+  @Reference
   @Override
+  public void setServiceRegistry(ServiceRegistry serviceRegistry) {
+    super.setServiceRegistry(serviceRegistry);
+  }
+
+  @Override
+  @Activate
   protected void activate(ComponentContext cc) {
     super.activate(cc);
   }
@@ -81,8 +97,9 @@ public class RetractYouTubeWorkflowOperationHandler extends AbstractWorkflowOper
 
       // Wait for youtube retraction to finish
       Job retractJob = publicationService.retract(mediaPackage);
-      if (!waitForStatus(retractJob).isSuccess())
+      if (!waitForStatus(retractJob).isSuccess()) {
         throw new WorkflowOperationException("The youtube retract job did not complete successfully");
+      }
 
       logger.debug("Retraction from youtube operation complete");
 

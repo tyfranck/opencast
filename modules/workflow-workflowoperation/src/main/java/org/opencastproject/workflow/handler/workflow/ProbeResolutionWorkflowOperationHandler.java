@@ -27,13 +27,16 @@ import org.opencastproject.mediapackage.Track;
 import org.opencastproject.mediapackage.VideoStream;
 import org.opencastproject.mediapackage.track.TrackImpl;
 import org.opencastproject.workflow.api.AbstractWorkflowOperationHandler;
+import org.opencastproject.workflow.api.ConfiguredTagsAndFlavors;
 import org.opencastproject.workflow.api.WorkflowInstance;
 import org.opencastproject.workflow.api.WorkflowOperationException;
+import org.opencastproject.workflow.api.WorkflowOperationHandler;
 import org.opencastproject.workflow.api.WorkflowOperationResult;
 import org.opencastproject.workflow.api.WorkflowOperationResult.Action;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.math.Fraction;
+import org.osgi.service.component.annotations.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,6 +51,14 @@ import java.util.Set;
  * Workflow operation handler for setting variables based on video resolutions
  */
 
+@Component(
+    immediate = true,
+    service = WorkflowOperationHandler.class,
+    property = {
+        "service.description=Probe Resolution Operation Handler",
+        "workflow.operation=probe-resolution"
+    }
+)
 public class ProbeResolutionWorkflowOperationHandler extends AbstractWorkflowOperationHandler {
 
   /** Configuration key for the "flavor" of the tracks to use as a source input */
@@ -69,13 +80,14 @@ public class ProbeResolutionWorkflowOperationHandler extends AbstractWorkflowOpe
 
     logger.info("Running probe-resolution workflow operation");
     final MediaPackage mediaPackage = workflowInstance.getMediaPackage();
-    final String sourceFlavorName = getConfig(workflowInstance, OPT_SOURCE_FLAVOR);
-    final MediaPackageElementFlavor sourceFlavor = MediaPackageElementFlavor.parseFlavor(sourceFlavorName);
+    ConfiguredTagsAndFlavors tagsAndFlavors = getTagsAndFlavors(workflowInstance,
+        Configuration.none, Configuration.one, Configuration.none, Configuration.none);
+    final MediaPackageElementFlavor sourceFlavor = tagsAndFlavors.getSingleSrcFlavor();
 
     // Ensure we have a matching track
     final Track[] tracks = mediaPackage.getTracks(sourceFlavor);
     if (tracks.length <= 0) {
-      logger.info("No tracks with specified flavor ({}).", sourceFlavorName);
+      logger.info("No tracks with specified flavor ({}).", sourceFlavor.toString());
       return createResult(mediaPackage, Action.CONTINUE);
     }
 

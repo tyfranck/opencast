@@ -36,6 +36,8 @@ import org.opencastproject.util.doc.rest.RestService;
 import org.opencastproject.waveform.api.WaveformService;
 import org.opencastproject.waveform.api.WaveformServiceException;
 
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,9 +50,22 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
 @Path("/")
-@RestService(name = "WaveformServiceEndpoint", title = "Waveform Service REST Endpoint",
-        abstractText = "The Waveform Service generates a waveform image from a media file with at least one audio channel.",
-        notes = {"All paths above are relative to the REST endpoint base (something like http://your.server/waveform)"})
+@RestService(
+    name = "WaveformServiceEndpoint",
+    title = "Waveform Service REST Endpoint",
+    abstractText = "The Waveform Service generates a waveform image from a media file with at least one audio channel.",
+    notes = { "All paths above are relative to the REST endpoint base (something like http://your.server/waveform)" }
+)
+@Component(
+    immediate = true,
+    service = WaveformServiceEndpoint.class,
+    property = {
+        "service.description=Waveform Service REST Endpoint",
+        "opencast.service.type=org.opencastproject.waveform",
+        "opencast.service.path=/waveform",
+        "opencast.service.jobproducer=true"
+    }
+)
 public class WaveformServiceEndpoint extends AbstractJobProducerEndpoint {
   private static final Logger logger = LoggerFactory.getLogger(WaveformServiceEndpoint.class);
 
@@ -85,14 +100,16 @@ public class WaveformServiceEndpoint extends AbstractJobProducerEndpoint {
                     responseCode = HttpServletResponse.SC_INTERNAL_SERVER_ERROR)
   })
   public Response createWaveformImage(@FormParam("track") String track,
-    @FormParam("pixelsPerMinute") int pixelsPerMinute, @FormParam("minWidth") int minWidth,
-    @FormParam("maxWidth") int maxWidth, @FormParam("height") int height, @FormParam("color") String color) {
+      @FormParam("pixelsPerMinute") int pixelsPerMinute, @FormParam("minWidth") int minWidth,
+      @FormParam("maxWidth") int maxWidth, @FormParam("height") int height, @FormParam("color") String color) {
     try {
       MediaPackageElement sourceTrack = MediaPackageElementParser.getFromXml(track);
-      if (!Track.TYPE.equals(sourceTrack.getElementType()))
+      if (!Track.TYPE.equals(sourceTrack.getElementType())) {
         return Response.status(Response.Status.BAD_REQUEST).entity("Track element must be of type track").build();
+      }
 
-      Job job = waveformService.createWaveformImage((Track) sourceTrack, pixelsPerMinute, minWidth, maxWidth, height, color);
+      Job job = waveformService.createWaveformImage(
+          (Track) sourceTrack, pixelsPerMinute, minWidth, maxWidth, height, color);
       return Response.ok().entity(new JaxbJob(job)).build();
     } catch (WaveformServiceException ex) {
       logger.error("Creating waveform job for track {} failed:", track, ex);
@@ -116,10 +133,12 @@ public class WaveformServiceEndpoint extends AbstractJobProducerEndpoint {
     return serviceRegistry;
   }
 
+  @Reference
   public void setServiceRegistry(ServiceRegistry serviceRegistry) {
     this.serviceRegistry = serviceRegistry;
   }
 
+  @Reference
   public void setWaveformService(WaveformService waveformService) {
     this.waveformService = waveformService;
   }

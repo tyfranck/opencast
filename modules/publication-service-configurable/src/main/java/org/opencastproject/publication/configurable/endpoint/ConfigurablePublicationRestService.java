@@ -39,6 +39,8 @@ import org.opencastproject.util.doc.rest.RestService;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,12 +60,28 @@ import javax.ws.rs.core.Response;
  * Rest endpoint, mainly for publishing media to a configurable channel
  */
 @Path("/")
-@RestService(name = "configurablepublicationservice", title = "Configurable Publication Service", abstractText =
-        "This service publishes and retracts media package elements to a configurable channel", notes = { "All paths above are "
-        + "relative to the REST endpoint base (something like http://your.server/files).  If the service is down "
-        + "or not working it will return a status 503, this means the the underlying service is not working and is "
-        + "either restarting or has failed. A status code 500 means a general failure has occurred which is not "
-        + "recoverable and was not anticipated. In other words, there is a bug!" })
+@RestService(
+    name = "configurablepublicationservice",
+    title = "Configurable Publication Service",
+    abstractText = "This service publishes and retracts media package elements to a configurable channel",
+    notes = {
+        "All paths above are relative to the REST endpoint base (something like http://your.server/files). "
+            + "If the service is down or not working it will return a status 503, this means the "
+            + "underlying service is not working and is either restarting or has failed. A status "
+            + "code 500 means a general failure has occurred which is not recoverable and was not "
+            + "anticipated. In other words, there is a bug!"
+    }
+)
+@Component(
+    immediate = true,
+    service = ConfigurablePublicationRestService.class,
+    property = {
+        "service.description=Configurable Publication REST Endpoint",
+        "opencast.service.type=org.opencastproject.publication.configurable",
+        "opencast.service.path=/publication/api",
+        "opencast.service.jobproducer=true"
+    }
+)
 public class ConfigurablePublicationRestService extends AbstractJobProducerEndpoint {
 
   private static final Logger logger = LoggerFactory.getLogger(ConfigurablePublicationRestService.class);
@@ -74,18 +92,20 @@ public class ConfigurablePublicationRestService extends AbstractJobProducerEndpo
   private ConfigurablePublicationService service;
   private ServiceRegistry serviceRegistry;
 
+  @Reference
   public void setService(final ConfigurablePublicationService service) {
     this.service = service;
   }
 
+  @Reference
   public void setServiceRegistry(final ServiceRegistry serviceRegistry) {
     this.serviceRegistry = serviceRegistry;
   }
 
   @Override
   public JobProducer getService() {
-    // The implementation is, of course, resolved by OSGi, so to be "clean", we hold a reference to just the interface
-    // in this class, but at _this_ point, we assume it at least implements JobProducer.
+    // The implementation is, of course, resolved by OSGi, so to be "clean", we hold a reference to just
+    // the interface in this class, but at _this_ point, we assume it at least implements JobProducer.
     return (JobProducer) this.service;
   }
 
@@ -97,17 +117,49 @@ public class ConfigurablePublicationRestService extends AbstractJobProducerEndpo
   @POST
   @Path("/replace")
   @Produces(MediaType.TEXT_XML)
-  @RestQuery(name = "replace", description = "Replace a media package in this publication channel", returnDescription = "The job that can be used to track the publication", restParameters = {
-          @RestParameter(name = "mediapackage", isRequired = true, description = "The media package", type = RestParameter.Type.TEXT),
-          @RestParameter(name = "channel", isRequired = true, description = "The channel name", type = RestParameter.Type.STRING),
-          @RestParameter(name = "addElements", isRequired = true, description =
-                  "The media package elements to published", type = RestParameter.Type.STRING),
-          @RestParameter(name = "retractElements", isRequired = true, description =
-                  "The identifiers of the media package elements to be retracted from the media package", type = RestParameter.Type.STRING) }, responses = {
-          @RestResponse(responseCode = HttpServletResponse.SC_OK, description = "An XML representation of the publication job") })
-  public Response replace(@FormParam("mediapackage") final String mediaPackageXml,
-          @FormParam("channel") final String channel, @FormParam("addElements") final String addElementsXml,
-          @FormParam("retractElements") final String retractElements) {
+  @RestQuery(
+      name = "replace",
+      description = "Replace a media package in this publication channel",
+      returnDescription = "The job that can be used to track the publication",
+      restParameters = {
+          @RestParameter(
+              name = "mediapackage",
+              isRequired = true,
+              description = "The media package",
+              type = RestParameter.Type.TEXT
+          ),
+          @RestParameter(
+              name = "channel",
+              isRequired = true,
+              description = "The channel name",
+              type = RestParameter.Type.STRING
+          ),
+          @RestParameter(
+              name = "addElements",
+              isRequired = true,
+              description = "The media package elements to published",
+              type = RestParameter.Type.STRING
+          ),
+          @RestParameter(
+              name = "retractElements",
+              isRequired = true,
+              description = "The identifiers of the media package elements to be retracted from the media package",
+              type = RestParameter.Type.STRING
+          )
+      },
+      responses = {
+          @RestResponse(
+              responseCode = HttpServletResponse.SC_OK,
+              description = "An XML representation of the publication job"
+          )
+      }
+  )
+  public Response replace(
+      @FormParam("mediapackage") final String mediaPackageXml,
+      @FormParam("channel") final String channel,
+      @FormParam("addElements") final String addElementsXml,
+      @FormParam("retractElements") final String retractElements
+  ) {
     Response response;
     final Job job;
     try {
@@ -130,17 +182,49 @@ public class ConfigurablePublicationRestService extends AbstractJobProducerEndpo
   @POST
   @Path("/replacesync")
   @Produces(MediaType.TEXT_XML)
-  @RestQuery(name = "replacesync", description = "Synchronously replace a media package in this publication channel", returnDescription = "The publication", restParameters = {
-      @RestParameter(name = "mediapackage", isRequired = true, description = "The media package", type = RestParameter.Type.TEXT),
-      @RestParameter(name = "channel", isRequired = true, description = "The channel name", type = RestParameter.Type.STRING),
-      @RestParameter(name = "addElements", isRequired = true, description =
-          "The media package elements to published", type = RestParameter.Type.STRING),
-      @RestParameter(name = "retractElements", isRequired = true, description =
-          "The identifiers of the media package elements to be retracted from the media package", type = RestParameter.Type.STRING) }, responses = {
-      @RestResponse(responseCode = HttpServletResponse.SC_OK, description = "An XML representation of the publication") })
-  public Response replaceSync(@FormParam("mediapackage") final String mediaPackageXml,
-                          @FormParam("channel") final String channel, @FormParam("addElements") final String addElementsXml,
-                          @FormParam("retractElements") final String retractElements) {
+  @RestQuery(
+      name = "replacesync",
+      description = "Synchronously replace a media package in this publication channel",
+      returnDescription = "The publication",
+      restParameters = {
+          @RestParameter(
+              name = "mediapackage",
+              isRequired = true,
+              description = "The media package",
+              type = RestParameter.Type.TEXT
+          ),
+          @RestParameter(
+              name = "channel",
+              isRequired = true,
+              description = "The channel name",
+              type = RestParameter.Type.STRING
+          ),
+          @RestParameter(
+              name = "addElements",
+              isRequired = true,
+              description = "The media package elements to published",
+              type = RestParameter.Type.STRING
+          ),
+          @RestParameter(
+              name = "retractElements",
+              isRequired = true,
+              description = "The identifiers of the media package elements to be retracted from the media package",
+              type = RestParameter.Type.STRING
+          )
+      },
+      responses = {
+          @RestResponse(
+              responseCode = HttpServletResponse.SC_OK,
+              description = "An XML representation of the publication"
+          )
+      }
+  )
+  public Response replaceSync(
+      @FormParam("mediapackage") final String mediaPackageXml,
+      @FormParam("channel") final String channel,
+      @FormParam("addElements") final String addElementsXml,
+      @FormParam("retractElements") final String retractElements
+  ) {
     Response response;
     final Publication publication;
     try {
@@ -156,4 +240,5 @@ public class ConfigurablePublicationRestService extends AbstractJobProducerEndpo
     }
     return response;
   }
+
 }

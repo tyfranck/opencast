@@ -7,7 +7,7 @@
   <parent>
     <groupId>org.opencastproject</groupId>
     <artifactId>base</artifactId>
-    <version>10-SNAPSHOT</version>
+    <version>12-SNAPSHOT</version>
     <relativePath>../../pom.xml</relativePath>
   </parent>
   <properties>
@@ -71,6 +71,21 @@
       <version>${project.version}</version>
     </dependency>
     <dependency>
+      <groupId>org.opencastproject</groupId>
+      <artifactId>opencast-elasticsearch-index</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.opencastproject</groupId>
+      <artifactId>opencast-elasticsearch-api</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.opencastproject</groupId>
+      <artifactId>opencast-dublincore</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
       <groupId>com.entwinemedia.common</groupId>
       <artifactId>functional</artifactId>
     </dependency>
@@ -96,7 +111,7 @@
     </dependency>
     <dependency>
       <groupId>org.osgi</groupId>
-      <artifactId>org.osgi.compendium</artifactId>
+      <artifactId>osgi.cmpn</artifactId>
     </dependency>
     <dependency>
       <groupId>org.apache.felix</groupId>
@@ -108,7 +123,7 @@
         </exclusion>
         <exclusion>
           <groupId>org.apache.felix</groupId>
-          <artifactId>org.osgi.compendium</artifactId>
+          <artifactId>osgi.cmpn</artifactId>
         </exclusion>
       </exclusions>
     </dependency>
@@ -186,10 +201,6 @@
               org.opencastproject.workflow.impl;version=${project.version},
               org.opencastproject.workflow.endpoint;version=${project.version}
             </Export-Package>
-            <Service-Component>
-              OSGI-INF/workflow-cleanup-scheduler-service.xml,
-              OSGI-INF/workflow-service-rest.xml
-            </Service-Component>
             <Http-Alias>/workflow/samples</Http-Alias>
             <Http-Classpath>/sample</Http-Classpath>
             <Http-Welcome>index.txt</Http-Welcome>

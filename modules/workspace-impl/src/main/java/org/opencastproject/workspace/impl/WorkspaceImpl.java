@@ -37,6 +37,7 @@ import static org.opencastproject.util.data.Prelude.sleep;
 
 import org.opencastproject.assetmanager.util.AssetPathUtils;
 import org.opencastproject.assetmanager.util.DistributionPathUtils;
+import org.opencastproject.cleanup.RecursiveDirectoryCleaner;
 import org.opencastproject.mediapackage.identifier.Id;
 import org.opencastproject.security.api.SecurityService;
 import org.opencastproject.security.api.TrustedHttpClient;
@@ -84,9 +85,10 @@ import java.io.OutputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.time.Duration;
 import java.util.Collections;
-import java.util.Date;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArraySet;
@@ -98,18 +100,19 @@ import javax.ws.rs.core.UriBuilder;
 /**
  * Implements a simple cache for remote URIs. Delegates methods to {@link WorkingFileRepository} wherever possible.
  * <p>
- * Note that if you are running the workspace on the same machine as the singleton working file repository, you can save
- * a lot of space if you configure both root directories onto the same volume (that is, if your file system supports
- * hard links).
+ * Note that if you are running the workspace on the same machine as the
+ * singleton working file repository, you can save a lot of space if you
+ * configure both root directories onto the same volume (that is, if your file
+ * system supports hard links).
  *
  * TODO Implement cache invalidation using the caching headers, if provided, from the remote server.
  */
 @Component(
-  property = {
+    property = {
     "service.description=Workspace"
-  },
-  immediate = true,
-  service = { Workspace.class }
+    },
+    immediate = true,
+    service = { Workspace.class }
 )
 public final class WorkspaceImpl implements Workspace {
   /** The logging facility */
@@ -255,9 +258,9 @@ public final class WorkspaceImpl implements Workspace {
       // Clean up
       FileUtils.deleteQuietly(targetFile);
 
-      if (linkingEnabled)
+      if (linkingEnabled) {
         logger.info("Hard links between the working file repository and the workspace enabled");
-      else {
+      } else {
         logger.warn("Hard links between the working file repository and the workspace are not possible");
         logger.warn("This will increase the overall amount of disk space used");
       }
@@ -407,7 +410,8 @@ public final class WorkspaceImpl implements Workspace {
     }
 
     // Check if we can get the files directly from the distribution download directory
-    final File publishedFile = DistributionPathUtils.getLocalFile(downloadPath, downloadUrl, securityService.getOrganization().getId(), uri);
+    final File publishedFile = DistributionPathUtils.getLocalFile(
+        downloadPath, downloadUrl, securityService.getOrganization().getId(), uri);
     if (publishedFile != null) {
       return new FileInputStream(publishedFile);
     }
@@ -495,8 +499,16 @@ public final class WorkspaceImpl implements Workspace {
     while (true) {
       // run the http request and handle its response
       try {
-        final Either<String, Option<File>> result = handleDownloadResponse(
-            trustedHttpClient.execute(get), src, dst);
+        HttpResponse response = null;
+        final Either<String, Option<File>> result;
+        try {
+          response = trustedHttpClient.execute(get);
+          result = handleDownloadResponse(response, src, dst);
+        } finally {
+          if (response != null) {
+            trustedHttpClient.close(response);
+          }
+        }
         for (Option<File> ff : result.right()) {
           for (File f : ff) {
             return f;
@@ -560,10 +572,12 @@ public final class WorkspaceImpl implements Workspace {
    *           if <code>file</code> does not exist or is not a regular file
    */
   protected String md5(File file) throws IOException, IllegalArgumentException, IllegalStateException {
-    if (file == null)
+    if (file == null) {
       throw new IllegalArgumentException("File must not be null");
-    if (!file.isFile())
+    }
+    if (!file.isFile()) {
       throw new IllegalArgumentException("File " + file.getAbsolutePath() + " can not be read");
+    }
 
     try (InputStream in = new FileInputStream(file)) {
       return DigestUtils.md5Hex(in);
@@ -605,12 +619,14 @@ public final class WorkspaceImpl implements Workspace {
         FileUtils.forceDelete(f);
 
         // Remove containing folder if a mediapackage element or a not a static collection
-        if (isMediaPackage || !isStaticCollection(collectionId))
+        if (isMediaPackage || !isStaticCollection(collectionId)) {
           FileSupport.delete(mpElementDir);
+        }
 
         // Also delete mediapackage itself when empty
-        if (isMediaPackage)
+        if (isMediaPackage) {
           FileSupport.delete(mpElementDir.getParentFile());
+        }
       }
     }
 
@@ -729,8 +745,9 @@ public final class WorkspaceImpl implements Workspace {
       FileUtils.forceMkdir(copy.getParentFile());
       FileUtils.deleteQuietly(copy);
       FileUtils.moveFile(original, copy);
-      if (!isStaticCollection(collection))
+      if (!isStaticCollection(collection)) {
         FileSupport.delete(original.getParentFile());
+      }
     }
     // move in WFR
     final URI wfrUri = wfr.moveTo(collection, filename, toMediaPackage, toMediaPackageElement, toFileName);
@@ -744,7 +761,8 @@ public final class WorkspaceImpl implements Workspace {
     return wfr.getCollectionContents(collectionId);
   }
 
-  private void deleteFromCollection(String collectionId, String fileName, boolean removeCollection) throws NotFoundException, IOException {
+  private void deleteFromCollection(String collectionId, String fileName, boolean removeCollection)
+          throws NotFoundException, IOException {
     // local delete
     final File f = workspaceFile(WorkingFileRepository.COLLECTION_PATH_PREFIX, collectionId,
             PathSupport.toSafeName(fileName));
@@ -792,8 +810,9 @@ public final class WorkspaceImpl implements Workspace {
     wsDirectory.mkdirs();
 
     String safeFileName = PathSupport.toSafeName(FilenameUtils.getName(uriString));
-    if (StringUtils.isBlank(safeFileName))
+    if (StringUtils.isBlank(safeFileName)) {
       safeFileName = UNKNOWN_FILENAME;
+    }
     return new File(wsDirectory, safeFileName);
   }
 
@@ -821,12 +840,14 @@ public final class WorkspaceImpl implements Workspace {
    */
   private String getCollection(URI uri) {
     String path = uri.toString();
-    if (path.indexOf(WorkingFileRepository.COLLECTION_PATH_PREFIX) < 0)
+    if (path.indexOf(WorkingFileRepository.COLLECTION_PATH_PREFIX) < 0) {
       throw new IllegalArgumentException(uri + " must point to a working file repository collection");
+    }
 
     String collection = FilenameUtils.getPath(path);
-    if (collection.endsWith("/"))
+    if (collection.endsWith("/")) {
       collection = collection.substring(0, collection.length() - 1);
+    }
     collection = collection.substring(collection.lastIndexOf("/"));
     collection = collection.substring(collection.lastIndexOf("/") + 1, collection.length());
     return collection;
@@ -856,7 +877,7 @@ public final class WorkspaceImpl implements Workspace {
     return wfr.getBaseUri();
   }
 
-  @Reference(name = "REPO")
+  @Reference
   public void setRepository(WorkingFileRepository repo) {
     this.wfr = repo;
     if (repo instanceof PathMappable) {
@@ -865,12 +886,12 @@ public final class WorkspaceImpl implements Workspace {
     }
   }
 
-  @Reference(name = "trustedHttpClient")
+  @Reference
   public void setTrustedHttpClient(TrustedHttpClient trustedHttpClient) {
     this.trustedHttpClient = trustedHttpClient;
   }
 
-  @Reference(name = "securityService")
+  @Reference
   public void setSecurityService(SecurityService securityService) {
     this.securityService = securityService;
   }
@@ -910,28 +931,8 @@ public final class WorkspaceImpl implements Workspace {
               + "avoid deleting data in use by running workflows.");
     }
 
-    // Get workspace root directly
-    final File workspaceDirectory = new File(wsRoot);
-    logger.info("Starting cleanup of workspace at {}", workspaceDirectory);
-
-    long now = new Date().getTime();
-    for (File file: FileUtils.listFiles(workspaceDirectory, null, true)) {
-      long fileLastModified = file.lastModified();
-      // Ensure file/dir is older than maxAge
-      long fileAgeInSeconds = (now - fileLastModified) / 1000;
-      if (fileLastModified == 0 || fileAgeInSeconds < maxAgeInSeconds) {
-        logger.debug("File age ({}) < max age ({}) or unknown: Skipping {} ", fileAgeInSeconds, maxAgeInSeconds, file);
-        continue;
-      }
-
-      // Delete old files
-      if (FileUtils.deleteQuietly(file)) {
-        logger.info("Deleted {}", file);
-      } else {
-        logger.warn("Could not delete {}", file);
-      }
-    }
-    logger.info("Finished cleanup of workspace");
+    // Clean workspace root directly
+    RecursiveDirectoryCleaner.cleanDirectory(Paths.get(wsRoot), Duration.ofSeconds(maxAgeInSeconds));
   }
 
   @Override
@@ -941,7 +942,8 @@ public final class WorkspaceImpl implements Workspace {
 
   @Override
   public void cleanup(Id mediaPackageId, boolean filesOnly) throws IOException {
-    final File mediaPackageDir = workspaceFile(WorkingFileRepository.MEDIAPACKAGE_PATH_PREFIX, mediaPackageId.toString());
+    final File mediaPackageDir = workspaceFile(
+        WorkingFileRepository.MEDIAPACKAGE_PATH_PREFIX, mediaPackageId.toString());
 
     if (filesOnly) {
       logger.debug("Clean workspace media package directory {} (files only)", mediaPackageDir);

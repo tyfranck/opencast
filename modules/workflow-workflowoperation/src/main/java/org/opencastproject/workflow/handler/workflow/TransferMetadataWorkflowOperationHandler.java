@@ -30,8 +30,10 @@ import org.opencastproject.metadata.dublincore.DublinCoreUtil;
 import org.opencastproject.metadata.dublincore.DublinCoreValue;
 import org.opencastproject.util.XmlNamespaceContext;
 import org.opencastproject.workflow.api.AbstractWorkflowOperationHandler;
+import org.opencastproject.workflow.api.ConfiguredTagsAndFlavors;
 import org.opencastproject.workflow.api.WorkflowInstance;
 import org.opencastproject.workflow.api.WorkflowOperationException;
+import org.opencastproject.workflow.api.WorkflowOperationHandler;
 import org.opencastproject.workflow.api.WorkflowOperationInstance;
 import org.opencastproject.workflow.api.WorkflowOperationResult;
 import org.opencastproject.workflow.api.WorkflowOperationResult.Action;
@@ -40,6 +42,8 @@ import org.opencastproject.workspace.api.Workspace;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.BooleanUtils;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,6 +56,14 @@ import java.util.stream.Collectors;
 /**
  * The workflow definition for handling "transfer-metadata" operations
  */
+@Component(
+    immediate = true,
+    service = WorkflowOperationHandler.class,
+    property = {
+        "service.description=Transfer metadata fields between catalogs",
+        "workflow.operation=transfer-metadata"
+    }
+)
 public class TransferMetadataWorkflowOperationHandler extends AbstractWorkflowOperationHandler {
 
   private static Logger logger = LoggerFactory.getLogger(TransferMetadataWorkflowOperationHandler.class);
@@ -72,6 +84,11 @@ public class TransferMetadataWorkflowOperationHandler extends AbstractWorkflowOp
 
     MediaPackage mediaPackage = workflowInstance.getMediaPackage();
     Configuration configuration = new Configuration(workflowInstance.getCurrentOperation());
+    ConfiguredTagsAndFlavors tagsAndFlavors = getTagsAndFlavors(workflowInstance,
+        AbstractWorkflowOperationHandler.Configuration.none, AbstractWorkflowOperationHandler.Configuration.one,
+        AbstractWorkflowOperationHandler.Configuration.none, AbstractWorkflowOperationHandler.Configuration.one);
+    configuration.setSourceFlavor(tagsAndFlavors.getSingleSrcFlavor());
+    configuration.setTargetFlavor(tagsAndFlavors.getSingleTargetFlavor());
 
     // select source metadata catalog
     Metadata sourceMetadata;
@@ -178,8 +195,8 @@ public class TransferMetadataWorkflowOperationHandler extends AbstractWorkflowOp
    * Storage for this operation's configuration
    */
   private class Configuration {
-    private final MediaPackageElementFlavor sourceFlavor;
-    private final MediaPackageElementFlavor targetFlavor;
+    private  MediaPackageElementFlavor sourceFlavor;
+    private  MediaPackageElementFlavor targetFlavor;
     private final EName sourceElement;
     private final EName targetElement;
     private final boolean force;
@@ -208,9 +225,18 @@ public class TransferMetadataWorkflowOperationHandler extends AbstractWorkflowOp
       concatDelimiter = operation.getConfiguration("concat");
       targetPrefix = operation.getConfiguration("target-prefix");
     }
+
+    void setSourceFlavor(MediaPackageElementFlavor flavor) {
+      this.sourceFlavor = flavor;
+    }
+
+    void setTargetFlavor(MediaPackageElementFlavor flavor) {
+      this.targetFlavor = flavor;
+    }
   }
 
   /** OSGi callback to inject the workspace */
+  @Reference
   public void setWorkspace(Workspace workspace) {
     this.workspace = workspace;
   }

@@ -28,6 +28,10 @@ import org.opencastproject.security.urlsigning.utils.UrlSigningServiceOsgiUtil;
 
 import org.osgi.service.cm.ConfigurationException;
 import org.osgi.service.cm.ManagedService;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
+import org.osgi.service.component.annotations.ReferenceCardinality;
+import org.osgi.service.component.annotations.ReferencePolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,6 +42,13 @@ import java.util.Dictionary;
 /**
  * Implementation of a {@link MediaPackageSerializer} that will securely sign urls of a Mediapackage.
  */
+@Component(
+    immediate = true,
+    service = { MediaPackageSerializer.class, ManagedService.class },
+    property = {
+        "service.description=Signing Mediapackage Serializer"
+    }
+)
 public class SigningMediaPackageSerializer implements MediaPackageSerializer, ManagedService {
   /** The logging facility */
   private static final Logger logger = LoggerFactory.getLogger(SigningMediaPackageSerializer.class);
@@ -62,13 +73,25 @@ public class SigningMediaPackageSerializer implements MediaPackageSerializer, Ma
   }
 
   /** OSGi DI */
+  @Reference
   void setSecurityService(SecurityService securityService) {
     this.securityService = securityService;
   }
 
   /** OSGi callback for UrlSigningService */
+  @Reference(
+      cardinality = ReferenceCardinality.OPTIONAL,
+      policy = ReferencePolicy.DYNAMIC,
+      unbind = "unsetUrlSigningService"
+  )
   public void setUrlSigningService(UrlSigningService urlSigningService) {
     this.urlSigningService = urlSigningService;
+  }
+
+  public void unsetUrlSigningService(UrlSigningService urlSigningService) {
+    if (this.urlSigningService == urlSigningService) {
+      this.urlSigningService = null;
+    }
   }
 
   /** OSGi callback if properties file is present */
@@ -80,27 +103,19 @@ public class SigningMediaPackageSerializer implements MediaPackageSerializer, Ma
             this.getClass().getSimpleName());
   }
 
-  /**
-   * {@inheritDoc}
-   *
-   * @see org.opencastproject.mediapackage.MediaPackageSerializer#encodeURI(URI)
-   */
   @Override
   public URI encodeURI(URI uri) throws URISyntaxException {
-    if (uri == null)
+    if (uri == null) {
       throw new IllegalArgumentException("Argument uri is null");
+    }
     return uri;
   }
 
-  /**
-   * {@inheritDoc}
-   *
-   * @see org.opencastproject.mediapackage.MediaPackageSerializer#decodeURI(URI)
-   */
   @Override
   public URI decodeURI(URI uri) throws URISyntaxException {
-    if (uri == null)
+    if (uri == null) {
       throw new IllegalArgumentException("Argument uri is null");
+    }
     return sign(uri);
   }
 

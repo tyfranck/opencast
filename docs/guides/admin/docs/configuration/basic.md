@@ -18,6 +18,10 @@ The value must be set to the URL from which the server can be accessed later.
 
     org.opencastproject.server.url=https://example.opencast.org
 
+It is not supported for Opencast to be hosted in a subpath.
+Opencast needs to be served from the root path element.
+The RFC 3986 URI path component needs to be empty.
+
 *Note:* This value will be written to all generated media packages and thus cannot be changed easily for already
 processed media. Please think about this setting carefully.
 
@@ -67,13 +71,11 @@ Details about the configuration can be found at:
 - [Database Configuration](database.md)
 
 
-Step 5: Elasticsearch Configuration
------------------------------------
+Step 5: Setting up Elasticsearch
+--------------------------------
 
-Opencast requires Elasticsearch for quick full-text search and data caching.
-For more details about the setup, have a look at the:
-
-- [Elasticsearch configuration guide](../modules/searchindex/elasticsearch.md).
+Opencast requires Elasticsearch. Instructions for installing Elasticsearch can be found in the
+[installation documentation](../installation/index.md).
 
 
 Step 6: HTTPS Configuration

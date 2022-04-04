@@ -65,7 +65,7 @@ public class AssetDto {
   @Column(name = "checksum", nullable = false, length = 64)
   private String checksum;
 
-  @Column(name = "mime_type", nullable = true, length = 64)
+  @Column(name = "mime_type", nullable = true, length = 255)
   private String mimeType;
 
   @Column(name = "size", nullable = false)
@@ -77,7 +77,14 @@ public class AssetDto {
   /**
    * Create a new DTO.
    */
-  public static AssetDto mk(String mediaPackageElementId, SnapshotDto snapshot, String checksum, Opt<MimeType> mimeType, String storeageId, long size) {
+  public static AssetDto mk(
+      String mediaPackageElementId,
+      SnapshotDto snapshot,
+      String checksum,
+      Opt<MimeType> mimeType,
+      String storeageId,
+      long size
+  ) {
     final AssetDto dto = new AssetDto();
     dto.snapshot = snapshot;
     dto.mediaPackageElementId = mediaPackageElementId;
@@ -124,4 +131,3 @@ public class AssetDto {
     this.snapshot = snapshot;
   }
 }
-

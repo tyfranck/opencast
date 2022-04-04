@@ -76,10 +76,13 @@ public class WowzaStreamingDistributionServiceTest {
   private static SecurityService securityService = null;
   private static OrganizationDirectoryService orgDirectoryService = null;
   private static UserDirectoryService userDirectoryService = null;
+  private static final String opencastStorageDirectory = "org.opencastproject.storage.dir";
 
   private static final String defaultTenant = "mh_default_org";
-  private static final String defaultUrlProperty = format(WowzaStreamingDistributionService.WOWZA_URL_KEY, defaultTenant);
-  private static final String defaultPortProperty = format(WowzaStreamingDistributionService.WOWZA_PORT_KEY, defaultTenant);
+  private static final String defaultUrlProperty
+      = format(WowzaStreamingDistributionService.WOWZA_URL_KEY, defaultTenant);
+  private static final String defaultPortProperty
+      = format(WowzaStreamingDistributionService.WOWZA_PORT_KEY, defaultTenant);
 
   private static final String tenant1 = "tenant_1";
   private static final String tenant2 = "tenant_2";
@@ -103,9 +106,10 @@ public class WowzaStreamingDistributionServiceTest {
   @Before
   public void before() throws Exception {
     map = new HashMap();
+    map.put(WowzaStreamingDistributionService.STREAMING_DIRECTORY_KEY, "/tmp/opencast/streams");
 
     bundleContext = createNiceMock(BundleContext.class);
-    expect(bundleContext.getProperty(WowzaStreamingDistributionService.STREAMING_DIRECTORY_KEY)).andReturn("/")
+    expect(bundleContext.getProperty(opencastStorageDirectory)).andReturn("/tmp/opencast")
             .anyTimes();
     replay(bundleContext);
 
@@ -214,6 +218,22 @@ public class WowzaStreamingDistributionServiceTest {
   }
 
   @Test
+  public void testSetStreamingDirectory() throws Exception {
+    setUpDefault();
+    streamingService.activate(bundleContext, map);
+    assertEquals("/tmp/opencast/streams",streamingService.getDistributionDirectory().getAbsolutePath().toString());
+  }
+
+  @Test
+  public void testDefaultSetStreamingDirectory() throws Exception {
+    map.remove(WowzaStreamingDistributionService.STREAMING_DIRECTORY_KEY);
+    setUpDefault();
+    streamingService.activate(bundleContext, map);
+    map.put(WowzaStreamingDistributionService.STREAMING_DIRECTORY_KEY, "/tmp/opencast/streams");
+    assertEquals("/tmp/opencast/streams",streamingService.getDistributionDirectory().getAbsolutePath().toString());
+  }
+
+  @Test
   public void testNoPort() throws Exception {
     setUpDefault();
 
@@ -240,23 +260,23 @@ public class WowzaStreamingDistributionServiceTest {
     setUpDefault();
 
     final String[] inputStreamingUrls = new String[] {
-            "incorrect url",
-            "noschema.myserver.com/my/path/to/server",
-            "http://withhttp.example.com/path",
-            "https://withhttps.testing.com/this/is/a/path",
-            "rtmp://withrtmp.test.ext/another/path",
-            "rtmps://withrtmps.anothertest.test/path/to/server",
-            "other://withotherschema.test/mypath"
+        "incorrect url",
+        "noschema.myserver.com/my/path/to/server",
+        "http://withhttp.example.com/path",
+        "https://withhttps.testing.com/this/is/a/path",
+        "rtmp://withrtmp.test.ext/another/path",
+        "rtmps://withrtmps.anothertest.test/path/to/server",
+        "other://withotherschema.test/mypath"
     };
 
     final String[] outputStreamingUrls = new String[] {
-            null,
-            "http://noschema.myserver.com:10/my/path/to/server",
-            "http://withhttp.example.com:10/path",
-            "https://withhttps.testing.com:10/this/is/a/path",
-            null,
-            null,
-            null
+        null,
+        "http://noschema.myserver.com:10/my/path/to/server",
+        "http://withhttp.example.com:10/path",
+        "https://withhttps.testing.com:10/this/is/a/path",
+        null,
+        null,
+        null
     };
 
     map.put(defaultPortProperty, port);

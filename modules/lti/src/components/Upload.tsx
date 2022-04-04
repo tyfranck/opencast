@@ -1,9 +1,9 @@
-import { ValueType } from "react-select/src/types"; // tslint:disable-line no-submodule-imports
-import Select from "react-select";
+import Select, { OnChangeValue } from "react-select";
 import { Loading } from "./Loading";
 import Helmet from "react-helmet";
 import React from "react";
 import { withTranslation, WithTranslation } from "react-i18next";
+import { ProgressBar } from 'react-bootstrap';
 import {
     uploadFile,
     copyEventToSeries,
@@ -34,9 +34,11 @@ interface UploadState {
     readonly metadata: MetadataResult | "error" | undefined;
     readonly presenterFile?: Blob;
     readonly captionFile?: Blob;
+    readonly captionFormat?: string;
+    readonly captionLanguage?: string;
     readonly copyState: "success" | "error" | "pending" | "none";
     readonly copySeries?: OptionType;
-    readonly refreshTimerId?: ReturnType<typeof setTimeout>;
+    readonly uploadProgress: number;
 }
 
 function isMetadata(
@@ -56,6 +58,7 @@ class TranslatedUpload extends React.Component<UploadProps, UploadState> {
             uploadState: "none",
             copyState: "none",
             metadata: undefined,
+            uploadProgress: 0
         };
     }
 
@@ -100,23 +103,12 @@ class TranslatedUpload extends React.Component<UploadProps, UploadState> {
                             seriesId: seriesId
                         },
                     });
-
-                    const timerMillis = 1000;
-                    this.setState({
-                        ...this.state,
-                        refreshTimerId: setInterval(this.refreshTimer.bind(this), timerMillis),
-                    });
                 }
             }
         }).catch((_) => this.setState({
             ...this.state,
             metadata: "error"
         }));
-    }
-
-    componentWillUnmount() {
-        if (this.state.refreshTimerId !== undefined)
-            clearInterval(this.state.refreshTimerId);
     }
 
     refreshTimer() {
@@ -142,6 +134,13 @@ class TranslatedUpload extends React.Component<UploadProps, UploadState> {
         });
     }
 
+    setUploadProgress(progress: number) {
+        this.setState({
+            ...this.state,
+            uploadProgress: progress
+        });
+    }
+
     onSubmit() {
         if (!isMetadata(this.state.metadata))
             return;
@@ -158,6 +157,9 @@ class TranslatedUpload extends React.Component<UploadProps, UploadState> {
             this.state.eventId,
             this.state.presenterFile,
             this.state.captionFile,
+            this.state.captionFormat,
+            this.state.captionLanguage,
+            this.setUploadProgress = this.setUploadProgress.bind(this)
         ).then((_) => {
             if (!isMetadata(this.state.metadata))
                 return;
@@ -182,10 +184,41 @@ class TranslatedUpload extends React.Component<UploadProps, UploadState> {
         });
     }
 
-    onCaptionFileChange(newFile: Blob) {
+    onCaptionFileChange(newFile: Blob | File) {
+        let captionFormat: string | undefined = undefined
+        if(newFile.type === 'text/vtt') {
+            captionFormat = 'vtt';
+        } else {
+            if(newFile instanceof File){
+                captionFormat = newFile.name !== '' ? newFile.name.substring(newFile.name.lastIndexOf('.') + 1) : undefined;
+                if(captionFormat === 'dfxp') {
+                    const fileReader = new FileReader();
+                    fileReader.onloadend = (e) =>
+                    {
+                        if(e.target?.result !== null && typeof e.target?.result === 'string'){
+                            const parser = new DOMParser();
+                            const xml = parser.parseFromString(e.target.result, 'text/xml');
+                            const lang = xml.querySelector('tt')?.getAttribute('xml:lang');
+                            if(lang !== null && lang !== undefined) {
+                                this.onCaptionLanguageChange(lang);
+                            }
+                        }
+                    }
+                    fileReader.readAsText(newFile);
+                }
+            }
+        }
         this.setState({
             ...this.state,
-            captionFile: newFile
+            captionFile: newFile,
+            captionFormat: captionFormat
+        });
+    }
+
+    onCaptionLanguageChange(language: string){
+        this.setState({
+            ...this.state,
+            captionLanguage: language
         });
     }
 
@@ -280,6 +313,8 @@ class TranslatedUpload extends React.Component<UploadProps, UploadState> {
                 onDataChange={this.onDataChange.bind(this)}
                 onPresenterFileChange={this.onPresenterFileChange.bind(this)}
                 onCaptionFileChange={this.onCaptionFileChange.bind(this)}
+                onCaptionLanguageChange={this.onCaptionLanguageChange.bind(this)}
+                captionFormat={this.state.captionFormat}
                 onSubmit={this.onSubmit.bind(this)}
                 hasSubmit={this.state.metadata.edited.locked === undefined}
                 pending={this.state.uploadState === "pending"} />
@@ -292,7 +327,8 @@ class TranslatedUpload extends React.Component<UploadProps, UploadState> {
                                 options={this.seriesItems()}
                                 isSearchable={true}
                                 value={this.state.copySeries}
-                                onChange={(value: ValueType<OptionType>) => this.onChangeCopyTarget(value as OptionType)}
+                                onChange={(value: OnChangeValue<OptionType, false>) =>
+                                    this.onChangeCopyTarget(value as OptionType)}
                                 placeholder={this.props.t("LTI.SELECT_COPY_TARGET")} />
                         </div>
                         <button
@@ -305,7 +341,8 @@ class TranslatedUpload extends React.Component<UploadProps, UploadState> {
                     </form>
                 </>
             }
-            <h2>{this.props.t("LTI.CURRENT_JOBS")}</h2>
+            { this.state.uploadProgress > 0 && <ProgressBar className="my-2" now={this.state.uploadProgress} label={`${this.state.uploadProgress}%`} />}
+            <h2 className="mt-4">{this.props.t("LTI.CURRENT_JOBS")}</h2>
             <JobList seriesId={this.state.metadata.seriesId} />
         </>;
     }

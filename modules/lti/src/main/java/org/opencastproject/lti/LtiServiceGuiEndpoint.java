@@ -37,6 +37,8 @@ import org.apache.commons.fileupload.FileItemStream;
 import org.apache.commons.fileupload.FileUploadException;
 import org.apache.commons.fileupload.servlet.ServletFileUpload;
 import org.apache.commons.fileupload.util.Streams;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -65,12 +67,27 @@ import javax.ws.rs.core.Response.Status;
  * The endpoint for the LTI gui
  */
 @Path("/")
-@RestService(name = "ltirestserviceendpoint", title = "LTI Service", notes = {}, abstractText = "Provides operations to LTI clients")
+@RestService(
+    name = "ltirestserviceguiendpoint",
+    title = "LTI Service",
+    notes = {},
+    abstractText = "Provides operations to LTI clients"
+)
+@Component(
+    immediate = true,
+    service = LtiServiceGuiEndpoint.class,
+    property = {
+        "service.description=LTI Service GUI",
+        "opencast.service.type=org.opencastproject.lti.service.remote",
+        "opencast.service.path=/lti-service-gui"
+    }
+)
 public class LtiServiceGuiEndpoint {
   /* OSGi service references */
   private LtiService service;
 
   /** OSGi DI */
+  @Reference
   public void setService(LtiService service) {
     this.service = service;
   }
@@ -98,7 +115,10 @@ public class LtiServiceGuiEndpoint {
   @POST
   @Path("/{eventId}/metadata")
   @Produces(MediaType.APPLICATION_JSON)
-  public Response setEventMetadata(@PathParam("eventId") final String eventId, @FormParam("metadataJson") final String metadataJson) {
+  public Response setEventMetadata(
+      @PathParam("eventId") final String eventId,
+      @FormParam("metadataJson") final String metadataJson
+  ) {
     try {
       this.service.setEventMetadataJson(eventId, metadataJson);
       return Response.ok().build();
@@ -112,7 +132,10 @@ public class LtiServiceGuiEndpoint {
   @POST
   @Path("/{eventId}/copy")
   @Produces(MediaType.APPLICATION_JSON)
-  public Response copyEventToSeries(@PathParam("eventId") final String eventId, @QueryParam("target_series") final String targetSeries) {
+  public Response copyEventToSeries(
+      @PathParam("eventId") final String eventId,
+      @QueryParam("target_series") final String targetSeries
+  ) {
     this.service.copyEventToSeries(eventId, targetSeries);
     return Response.ok().build();
   }
@@ -133,19 +156,63 @@ public class LtiServiceGuiEndpoint {
   @POST
   @Path("/")
   @Consumes(MediaType.MULTIPART_FORM_DATA)
-  @RestQuery(name = "uploadevent", description = "Creates an event in a multipart request.", returnDescription = "", restParameters = {
-          @RestParameter(name = "presenter", description = "Presenter movie track", isRequired = false, type = Type.FILE),
-          @RestParameter(name = "license", description = "License chosen", isRequired = false, type = Type.STRING),
-          @RestParameter(name = "seriesName", description = "Series name", isRequired = false, type = Type.STRING),
-          @RestParameter(name = "isPartOf", description = "Series ID", isRequired = false, type = Type.STRING),
-          @RestParameter(name = "processing", description = "Processing instructions task configuration", isRequired = false, type = Type.STRING) }, responses = {
-                  @RestResponse(description = "A new event is created and its identifier is returned in the Location header.", responseCode = HttpServletResponse.SC_CREATED),
-                  @RestResponse(description = "The event could not be created due to a scheduling conflict.", responseCode = HttpServletResponse.SC_CONFLICT),
-                  @RestResponse(description = "The request is invalid or inconsistent..", responseCode = HttpServletResponse.SC_BAD_REQUEST) })
+  @RestQuery(
+      name = "uploadevent",
+      description = "Creates an event in a multipart request.",
+      returnDescription = "",
+      restParameters = {
+          @RestParameter(
+              name = "presenter",
+              description = "Presenter movie track",
+              isRequired = false,
+              type = Type.FILE
+          ),
+          @RestParameter(
+              name = "license",
+              description = "License chosen",
+              isRequired = false,
+              type = Type.STRING
+          ),
+          @RestParameter(
+              name = "seriesName",
+              description = "Series name",
+              isRequired = false,
+              type = Type.STRING
+          ),
+          @RestParameter(
+              name = "isPartOf",
+              description = "Series ID",
+              isRequired = false,
+              type = Type.STRING
+          ),
+          @RestParameter(
+              name = "processing",
+              description = "Processing instructions task configuration",
+              isRequired = false,
+              type = Type.STRING
+          )
+      },
+      responses = {
+          @RestResponse(
+              description = "A new event is created and its identifier is returned in the Location header.",
+              responseCode = HttpServletResponse.SC_CREATED
+          ),
+          @RestResponse(
+              description = "The event could not be created due to a scheduling conflict.",
+              responseCode = HttpServletResponse.SC_CONFLICT
+          ),
+          @RestResponse(
+              description = "The request is invalid or inconsistent..",
+              responseCode = HttpServletResponse.SC_BAD_REQUEST
+          )
+      }
+  )
   public Response createNewEvent(@HeaderParam("Accept") String acceptHeader, @Context HttpServletRequest request) {
     String seriesId = "";
     try {
       String captions = null;
+      String captionFormat = null;
+      String captionLanguage = null;
       String metadata = null;
       String eventId = null;
       for (FileItemIterator iter = new ServletFileUpload().getItemIterator(request); iter.hasNext();) {
@@ -157,6 +224,10 @@ public class LtiServiceGuiEndpoint {
           metadata = Streams.asString(item.openStream());
         } else if ("captions".equals(fieldName)) {
           captions = Streams.asString(item.openStream());
+        } else if ("captionFormat".equals(fieldName)) {
+          captionFormat = Streams.asString(item.openStream());
+        } else if ("captionLanguage".equals(fieldName)) {
+          captionLanguage = Streams.asString(item.openStream());
         } else if ("seriesId".equals(fieldName)) {
           final String fieldValue = Streams.asString(item.openStream());
           if (!fieldValue.isEmpty()) {
@@ -166,6 +237,8 @@ public class LtiServiceGuiEndpoint {
           service.upsertEvent(
                   new LtiFileUpload(item.openStream(), item.getName()),
                   captions,
+                  captionFormat,
+                  captionLanguage,
                   eventId,
                   seriesId,
                   metadata);
@@ -175,6 +248,8 @@ public class LtiServiceGuiEndpoint {
       service.upsertEvent(
               null,
               captions,
+              captionFormat,
+              captionLanguage,
               eventId,
               seriesId,
               metadata);
@@ -190,10 +265,24 @@ public class LtiServiceGuiEndpoint {
 
   @DELETE
   @Path("{eventId}")
-  @RestQuery(name = "deleteevent", description = "Deletes an event.", returnDescription = "", pathParameters = {
-          @RestParameter(name = "eventId", description = "The event id", isRequired = true, type = Type.STRING) }, responses = {
-          @RestResponse(description = "The event has been deleted.", responseCode = HttpServletResponse.SC_NO_CONTENT),
-          @RestResponse(description = "The specified event does not exist.", responseCode = HttpServletResponse.SC_NOT_FOUND) })
+  @RestQuery(
+      name = "deleteevent",
+      description = "Deletes an event.",
+      returnDescription = "",
+      pathParameters = {
+          @RestParameter(name = "eventId", description = "The event id", isRequired = true, type = Type.STRING)
+      },
+      responses = {
+          @RestResponse(
+              description = "The event has been deleted.",
+              responseCode = HttpServletResponse.SC_NO_CONTENT
+          ),
+          @RestResponse(
+              description = "The specified event does not exist.",
+              responseCode = HttpServletResponse.SC_NOT_FOUND
+          )
+      }
+  )
   public Response deleteEvent(@HeaderParam("Accept") String acceptHeader, @PathParam("eventId") String id) {
     service.delete(id);
     return Response.noContent().build();

@@ -43,6 +43,9 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
 import org.osgi.service.component.ComponentContext;
+import org.osgi.service.component.annotations.Activate;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -62,13 +65,30 @@ import javax.ws.rs.core.Response.Status;
  * Rest endpoint for distributing files to AWS S3.
  */
 @Path("/")
-@RestService(name = "awss3distributionservice", title = "AWS S3 Distribution Service", abstractText = "This service distributes media package elements to AWS S3.", notes = {
+@RestService(
+    name = "awss3distributionservice",
+    title = "AWS S3 Distribution Service",
+    abstractText = "This service distributes media package elements to AWS S3.",
+    notes = {
         "All paths above are relative to the REST endpoint base (something like http://your.server/files)",
-        "If the service is down or not working it will return a status 503, this means the the underlying service is "
-                + "not working and is either restarting or has failed",
-        "A status code 500 means a general failure has occurred which is not recoverable and was not anticipated. In "
-                + "other words, there is a bug! You should file an error report with your server logs from the time when the "
-                + "error occurred: <a href=\"https://github.com/opencast/opencast/issues\">Opencast Issue Tracker</a>" })
+        "If the service is down or not working it will return a status 503, this means the the "
+            + "underlying service is not working and is either restarting or has failed",
+        "A status code 500 means a general failure has occurred which is not recoverable and was "
+            + "not anticipated. In other words, there is a bug! You should file an error report "
+            + "with your server logs from the time when the error occurred: "
+            + "<a href=\"https://github.com/opencast/opencast/issues\">Opencast Issue Tracker</a>"
+    }
+)
+@Component(
+    immediate = true,
+    service = AwsS3DistributionRestService.class,
+    property = {
+        "service.description=AWS S3 Distribution REST Endpoint",
+        "opencast.service.type=org.opencastproject.distribution.aws.s3",
+        "opencast.service.path=/distribution/s3",
+        "opencast.service.jobproducer=true"
+    }
+)
 public class AwsS3DistributionRestService extends AbstractJobProducerEndpoint {
 
   /** The logger */
@@ -86,6 +106,7 @@ public class AwsS3DistributionRestService extends AbstractJobProducerEndpoint {
    * @param cc
    *          this component's context
    */
+  @Activate
   public void activate(ComponentContext cc) {
   }
 
@@ -95,6 +116,7 @@ public class AwsS3DistributionRestService extends AbstractJobProducerEndpoint {
    * @param serviceRegistry
    *          the service registry
    */
+  @Reference
   protected void setServiceRegistry(ServiceRegistry serviceRegistry) {
     this.serviceRegistry = serviceRegistry;
   }
@@ -103,6 +125,7 @@ public class AwsS3DistributionRestService extends AbstractJobProducerEndpoint {
    * @param service
    *          the service to set
    */
+  @Reference(target = "(distribution.channel=aws.s3)")
   public void setService(AwsS3DistributionService service) {
     this.service = service;
   }
@@ -110,14 +133,46 @@ public class AwsS3DistributionRestService extends AbstractJobProducerEndpoint {
   @POST
   @Path("/")
   @Produces(MediaType.TEXT_XML)
-  @RestQuery(name = "distribute", description = "Distribute a media package element to this distribution channel", returnDescription = "The job that can be used to track the distribution", restParameters = {
-          @RestParameter(name = "mediapackage", isRequired = true, description = "The mediapackage", type = Type.TEXT),
-          @RestParameter(name = "channelId", isRequired = true, description = "The publication channel ID", type = Type.TEXT),
-          @RestParameter(name = "elementId", isRequired = true, description = "The element to distribute", type = Type.STRING),
-          @RestParameter(name = "checkAvailability", isRequired = false, description = "If the service should try to access the distributed element", type = Type.BOOLEAN) }, responses = { @RestResponse(responseCode = SC_OK, description = "An XML representation of the distribution job") })
-  public Response distribute(@FormParam("mediapackage") String mediaPackageXml,
-          @FormParam("channelId") String channelId, @FormParam("elementId") String elementId,
-          @DefaultValue("true") @FormParam("checkAvailability") boolean checkAvailability) throws Exception {
+  @RestQuery(
+      name = "distribute",
+      description = "Distribute a media package element to this distribution channel",
+      returnDescription = "The job that can be used to track the distribution",
+      restParameters = {
+          @RestParameter(
+              name = "mediapackage",
+              isRequired = true,
+              description = "The mediapackage",
+              type = Type.TEXT
+          ),
+          @RestParameter(
+              name = "channelId",
+              isRequired = true,
+              description = "The publication channel ID",
+              type = Type.TEXT
+          ),
+          @RestParameter(
+              name = "elementId",
+              isRequired = true,
+              description = "The element to distribute",
+              type = Type.STRING
+          ),
+          @RestParameter(
+              name = "checkAvailability",
+              isRequired = false,
+              description = "If the service should try to access the distributed element",
+              type = Type.BOOLEAN
+          )
+      },
+      responses = {
+          @RestResponse(responseCode = SC_OK, description = "An XML representation of the distribution job")
+      }
+  )
+  public Response distribute(
+      @FormParam("mediapackage") String mediaPackageXml,
+      @FormParam("channelId") String channelId,
+      @FormParam("elementId") String elementId,
+      @FormParam("checkAvailability") @DefaultValue("true") boolean checkAvailability
+  ) throws Exception {
     Job job = null;
     try {
       Gson gson = new Gson();
@@ -128,7 +183,8 @@ public class AwsS3DistributionRestService extends AbstractJobProducerEndpoint {
       logger.debug("Unable to distribute element: {}", e.getMessage());
       return status(Status.BAD_REQUEST).build();
     } catch (Exception e) {
-      logger.warn("Unable to distribute media package {}, element {} to aws s3 channel: {}", mediaPackageXml, elementId, e);
+      logger.warn("Unable to distribute media package {}, element {} to aws s3 channel: {}",
+          mediaPackageXml, elementId, e);
       return Response.serverError().status(Status.INTERNAL_SERVER_ERROR).build();
     }
     return Response.ok(new JaxbJob(job)).build();
@@ -137,14 +193,46 @@ public class AwsS3DistributionRestService extends AbstractJobProducerEndpoint {
   @POST
   @Path("/distributesync")
   @Produces(MediaType.TEXT_XML)
-  @RestQuery(name = "distributesync", description = "Synchronously distribute a media package element to this distribution channel", returnDescription = "The distribution", restParameters = {
-      @RestParameter(name = "mediapackage", isRequired = true, description = "The mediapackage", type = Type.TEXT),
-      @RestParameter(name = "channelId", isRequired = true, description = "The publication channel ID", type = Type.TEXT),
-      @RestParameter(name = "elementId", isRequired = true, description = "The element to distribute", type = Type.STRING),
-      @RestParameter(name = "checkAvailability", isRequired = false, description = "If the service should try to access the distributed element", type = Type.BOOLEAN) }, responses = { @RestResponse(responseCode = SC_OK, description = "An XML representation of the distribution") })
-  public Response distributeSync(@FormParam("mediapackage") String mediaPackageXml,
-                             @FormParam("channelId") String channelId, @FormParam("elementId") String elementId,
-                             @DefaultValue("true") @FormParam("checkAvailability") boolean checkAvailability) throws Exception {
+  @RestQuery(
+      name = "distributesync",
+      description = "Synchronously distribute a media package element to this distribution channel",
+      returnDescription = "The distribution",
+      restParameters = {
+          @RestParameter(
+              name = "mediapackage",
+              isRequired = true,
+              description = "The mediapackage",
+              type = Type.TEXT
+          ),
+          @RestParameter(
+              name = "channelId",
+              isRequired = true,
+              description = "The publication channel ID",
+              type = Type.TEXT
+          ),
+          @RestParameter(
+              name = "elementId",
+              isRequired = true,
+              description = "The element to distribute",
+              type = Type.STRING
+          ),
+          @RestParameter(
+              name = "checkAvailability",
+              isRequired = false,
+              description = "If the service should try to access the distributed element",
+              type = Type.BOOLEAN
+          )
+      },
+      responses = {
+          @RestResponse(responseCode = SC_OK, description = "An XML representation of the distribution")
+      }
+  )
+  public Response distributeSync(
+      @FormParam("mediapackage") String mediaPackageXml,
+      @FormParam("channelId") String channelId,
+      @FormParam("elementId") String elementId,
+      @FormParam("checkAvailability") @DefaultValue("true") boolean checkAvailability
+  ) throws Exception {
     List<MediaPackageElement> result = null;
     try {
       Gson gson = new Gson();
@@ -155,7 +243,8 @@ public class AwsS3DistributionRestService extends AbstractJobProducerEndpoint {
       logger.debug("Unable to distribute element: {}", e.getMessage());
       return status(Status.BAD_REQUEST).build();
     } catch (Exception e) {
-      logger.warn("Unable to distribute media package {}, element {} to aws s3 channel: {}", mediaPackageXml, elementId, e);
+      logger.warn("Unable to distribute media package {}, element {} to aws s3 channel: {}",
+          mediaPackageXml, elementId, e);
       return Response.serverError().status(Status.INTERNAL_SERVER_ERROR).build();
     }
     return Response.ok(MediaPackageElementParser.getArrayAsXml(result)).build();
@@ -164,12 +253,39 @@ public class AwsS3DistributionRestService extends AbstractJobProducerEndpoint {
   @POST
   @Path("/retract")
   @Produces(MediaType.TEXT_XML)
-  @RestQuery(name = "retract", description = "Retract a media package element from this distribution channel", returnDescription = "The job that can be used to track the retraction", restParameters = {
-          @RestParameter(name = "mediapackage", isRequired = true, description = "The mediapackage", type = Type.TEXT),
-          @RestParameter(name = "channelId", isRequired = true, description = "The publication channel ID", type = Type.TEXT),
-          @RestParameter(name = "elementId", isRequired = true, description = "The element to retract", type = Type.STRING) }, responses = { @RestResponse(responseCode = SC_OK, description = "An XML representation of the retraction job") })
-  public Response retract(@FormParam("mediapackage") String mediaPackageXml, @FormParam("channelId") String channelId,
-          @FormParam("elementId") String elementId) throws Exception {
+  @RestQuery(
+      name = "retract",
+      description = "Retract a media package element from this distribution channel",
+      returnDescription = "The job that can be used to track the retraction",
+      restParameters = {
+          @RestParameter(
+              name = "mediapackage",
+              isRequired = true,
+              description = "The mediapackage",
+              type = Type.TEXT
+          ),
+          @RestParameter(
+              name = "channelId",
+              isRequired = true,
+              description = "The publication channel ID",
+              type = Type.TEXT
+          ),
+          @RestParameter(
+              name = "elementId",
+              isRequired = true,
+              description = "The element to retract",
+              type = Type.STRING
+          )
+      },
+      responses = {
+          @RestResponse(responseCode = SC_OK, description = "An XML representation of the retraction job")
+      }
+  )
+  public Response retract(
+      @FormParam("mediapackage") String mediaPackageXml,
+      @FormParam("channelId") String channelId,
+      @FormParam("elementId") String elementId
+  ) throws Exception {
     Job job = null;
     try {
       Gson gson = new Gson();
@@ -180,7 +296,8 @@ public class AwsS3DistributionRestService extends AbstractJobProducerEndpoint {
       logger.debug("Unable to retract element: {}", e.getMessage());
       return status(Status.BAD_REQUEST).build();
     } catch (Exception e) {
-      logger.warn("Unable to retract media package {}, element {} from aws s3 channel: {}", mediaPackageXml, elementId, e);
+      logger.warn("Unable to retract media package {}, element {} from aws s3 channel: {}",
+          mediaPackageXml, elementId, e);
       return Response.serverError().status(Status.INTERNAL_SERVER_ERROR).build();
     }
     return Response.ok(new JaxbJob(job)).build();
@@ -189,12 +306,39 @@ public class AwsS3DistributionRestService extends AbstractJobProducerEndpoint {
   @POST
   @Path("/retractsync")
   @Produces(MediaType.TEXT_XML)
-  @RestQuery(name = "retractsync", description = "Synchronously retract a media package element from this distribution channel", returnDescription = "The retraction", restParameters = {
-      @RestParameter(name = "mediapackage", isRequired = true, description = "The mediapackage", type = Type.TEXT),
-      @RestParameter(name = "channelId", isRequired = true, description = "The publication channel ID", type = Type.TEXT),
-      @RestParameter(name = "elementId", isRequired = true, description = "The element to retract", type = Type.STRING) }, responses = { @RestResponse(responseCode = SC_OK, description = "An XML representation of the retraction") })
-  public Response retractSync(@FormParam("mediapackage") String mediaPackageXml, @FormParam("channelId") String channelId,
-                          @FormParam("elementId") String elementId) throws Exception {
+  @RestQuery(
+      name = "retractsync",
+      description = "Synchronously retract a media package element from this distribution channel",
+      returnDescription = "The retraction",
+      restParameters = {
+          @RestParameter(
+              name = "mediapackage",
+              isRequired = true,
+              description = "The mediapackage",
+              type = Type.TEXT
+          ),
+          @RestParameter(
+              name = "channelId",
+              isRequired = true,
+              description = "The publication channel ID",
+              type = Type.TEXT
+          ),
+          @RestParameter(
+              name = "elementId",
+              isRequired = true,
+              description = "The element to retract",
+              type = Type.STRING
+          )
+      },
+      responses = {
+          @RestResponse(responseCode = SC_OK, description = "An XML representation of the retraction")
+      }
+  )
+  public Response retractSync(
+      @FormParam("mediapackage") String mediaPackageXml,
+      @FormParam("channelId") String channelId,
+      @FormParam("elementId") String elementId
+  ) throws Exception {
     List<MediaPackageElement> result = null;
     try {
       Gson gson = new Gson();
@@ -205,44 +349,12 @@ public class AwsS3DistributionRestService extends AbstractJobProducerEndpoint {
       logger.debug("Unable to retract element: {}", e.getMessage());
       return status(Status.BAD_REQUEST).build();
     } catch (Exception e) {
-      logger.warn("Unable to retract media package {}, element {} from aws s3 channel: {}", mediaPackageXml, elementId, e);
+      logger.warn("Unable to retract media package {}, element {} from aws s3 channel: {}",
+          mediaPackageXml, elementId, e);
       return Response.serverError().status(Status.INTERNAL_SERVER_ERROR).build();
     }
     return Response.ok(MediaPackageElementParser.getArrayAsXml(result)).build();
   }
-
-  /* TODO
-  Commented out due to changes in the way the element IDs are passed (ie, a list rather than individual ones
-  per job).  This code is still useful long term, but I don't have time to write the necessary wrapper code
-  around it right now.
-  @POST
-  @Path("/restore")
-  @Produces(MediaType.TEXT_XML)
-  @RestQuery(name = "restore", description = "Restore a media package element from this distribution channel", returnDescription = "The job that can be used to track the restoration", restParameters = {
-          @RestParameter(name = "mediapackage", isRequired = true, description = "The mediapackage", type = Type.TEXT),
-          @RestParameter(name = "channelId", isRequired = true, description = "The publication channel ID", type = Type.TEXT),
-          @RestParameter(name = "elementId", isRequired = true, description = "The element to retract", type = Type.STRING),
-          @RestParameter(name = "fileName", isRequired = false, description = "The filename of the file to restore", type = Type.TEXT)}, reponses = { @RestResponse(responseCode = SC_OK, description = "An XML representation of the restoration job") })
-  public Response restore(@FormParam("mediapackage") String mediaPackageXml, @FormParam("channelId") String channelId,
-          @FormParam("elementId") String elementId, @FormParam("fileName") String fileName) throws Exception {
-    Job job = null;
-    try {
-      MediaPackage mediapackage = MediaPackageParser.getFromXml(mediaPackageXml);
-      if (StringUtils.isNotBlank(fileName)) {
-        job = service.restore(channelId, mediapackage, elementId, fileName);
-      } else {
-        job = service.restore(channelId, mediapackage, elementId);
-      }
-    } catch (IllegalArgumentException e) {
-      logger.debug("Unable to restore element: {}", e.getMessage());
-      return status(Status.BAD_REQUEST).build();
-    } catch (Exception e) {
-      logger.warn("Unable to restore media package {}, element {} from aws s3 channel: {}", mediaPackageXml, elementId, e);
-      return Response.serverError().status(Status.INTERNAL_SERVER_ERROR).build();
-    }
-    return Response.ok(new JaxbJob(job)).build();
-  }
-  */
 
   /**
    * {@inheritDoc}
@@ -251,10 +363,11 @@ public class AwsS3DistributionRestService extends AbstractJobProducerEndpoint {
    */
   @Override
   public JobProducer getService() {
-    if (service instanceof JobProducer)
+    if (service instanceof JobProducer) {
       return (JobProducer) service;
-    else
+    } else {
       return null;
+    }
   }
 
   /**

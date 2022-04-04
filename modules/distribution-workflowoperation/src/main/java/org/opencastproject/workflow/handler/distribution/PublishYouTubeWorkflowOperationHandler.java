@@ -34,21 +34,34 @@ import org.opencastproject.mediapackage.selector.AbstractMediaPackageElementSele
 import org.opencastproject.mediapackage.selector.SimpleElementSelector;
 import org.opencastproject.publication.api.PublicationException;
 import org.opencastproject.publication.api.YouTubePublicationService;
+import org.opencastproject.serviceregistry.api.ServiceRegistry;
 import org.opencastproject.workflow.api.AbstractWorkflowOperationHandler;
+import org.opencastproject.workflow.api.ConfiguredTagsAndFlavors;
 import org.opencastproject.workflow.api.WorkflowInstance;
 import org.opencastproject.workflow.api.WorkflowOperationException;
+import org.opencastproject.workflow.api.WorkflowOperationHandler;
 import org.opencastproject.workflow.api.WorkflowOperationResult;
 import org.opencastproject.workflow.api.WorkflowOperationResult.Action;
 
-import org.apache.commons.lang3.StringUtils;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
+import java.util.List;
 
 /**
  * The workflow definition for handling "publish" operations
  */
+@Component(
+    immediate = true,
+    service = WorkflowOperationHandler.class,
+    property = {
+        "service.description=YouTube Publication Workflow Handler",
+        "workflow.operation=publish-youtube"
+    }
+)
 public class PublishYouTubeWorkflowOperationHandler extends AbstractWorkflowOperationHandler {
 
   /** The logging facility */
@@ -63,16 +76,17 @@ public class PublishYouTubeWorkflowOperationHandler extends AbstractWorkflowOper
    * @param publicationService
    *          the publication service
    */
+  @Reference
   public void setPublicationService(YouTubePublicationService publicationService) {
     this.publicationService = publicationService;
   }
 
-  /**
-   * {@inheritDoc}
-   *
-   * @see org.opencastproject.workflow.api.WorkflowOperationHandler#start(org.opencastproject.workflow.api.WorkflowInstance,
-   *      JobContext)
-   */
+  @Reference
+  @Override
+  public void setServiceRegistry(ServiceRegistry serviceRegistry) {
+    super.setServiceRegistry(serviceRegistry);
+  }
+
   public WorkflowOperationResult start(final WorkflowInstance workflowInstance, JobContext context)
           throws WorkflowOperationException {
     logger.debug("Running youtube publication workflow operation");
@@ -80,9 +94,10 @@ public class PublishYouTubeWorkflowOperationHandler extends AbstractWorkflowOper
     MediaPackage mediaPackage = workflowInstance.getMediaPackage();
 
     // Check which tags have been configured
-    String sourceTags = StringUtils.trimToNull(workflowInstance.getCurrentOperation().getConfiguration("source-tags"));
-    String sourceFlavors = StringUtils.trimToNull(workflowInstance.getCurrentOperation().getConfiguration(
-            "source-flavors"));
+    ConfiguredTagsAndFlavors tagsAndFlavors = getTagsAndFlavors(workflowInstance,
+        Configuration.many, Configuration.many, Configuration.none, Configuration.none);
+    List<String> sourceTags = tagsAndFlavors.getSrcTags();
+    List<MediaPackageElementFlavor> sourceFlavors = tagsAndFlavors.getSrcFlavors();
 
     AbstractMediaPackageElementSelector<MediaPackageElement> elementSelector;
 
@@ -92,13 +107,13 @@ public class PublishYouTubeWorkflowOperationHandler extends AbstractWorkflowOper
     }
     elementSelector = new SimpleElementSelector();
 
-    if (sourceFlavors != null) {
-      for (String flavor : asList(sourceFlavors)) {
-        elementSelector.addFlavor(MediaPackageElementFlavor.parseFlavor(flavor));
+    if (!sourceFlavors.isEmpty()) {
+      for (MediaPackageElementFlavor flavor : sourceFlavors) {
+        elementSelector.addFlavor(flavor);
       }
     }
-    if (sourceTags != null) {
-      for (String tag : asList(sourceTags)) {
+    if (!sourceTags.isEmpty()) {
+      for (String tag : sourceTags) {
         elementSelector.addTag(tag);
       }
     }
@@ -125,8 +140,9 @@ public class PublishYouTubeWorkflowOperationHandler extends AbstractWorkflowOper
       }
 
       // Wait until the youtube publication job has returned
-      if (!waitForStatus(youtubeJob).isSuccess())
+      if (!waitForStatus(youtubeJob).isSuccess()) {
         throw new WorkflowOperationException("The youtube publication jobs did not complete successfully");
+      }
 
       // All the jobs have passed
       Job job = serviceRegistry.getJob(youtubeJob.getId());
@@ -146,8 +162,8 @@ public class PublishYouTubeWorkflowOperationHandler extends AbstractWorkflowOper
 
       if (newElement == null) {
         logger.warn(
-                "Publication to youtube failed, unable to parse the payload '{}' from job '{}' to a mediapackage element",
-                job.getPayload(), job);
+            "Publication to youtube failed, unable to parse the payload '{}' from job '{}' to a mediapackage element",
+            job.getPayload(), job);
         return createResult(mediaPackage, Action.CONTINUE);
       }
       mediaPackage.add(newElement);

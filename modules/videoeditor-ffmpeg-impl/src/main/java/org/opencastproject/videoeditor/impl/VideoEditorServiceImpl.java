@@ -57,6 +57,10 @@ import org.apache.commons.io.IOUtils;
 import org.osgi.service.cm.ConfigurationException;
 import org.osgi.service.cm.ManagedService;
 import org.osgi.service.component.ComponentContext;
+import org.osgi.service.component.annotations.Activate;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Deactivate;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -80,6 +84,13 @@ import javax.xml.bind.JAXBException;
 /**
  * Implementation of VideoeditorService using FFMPEG
  */
+@Component(
+    immediate = true,
+    service = { VideoEditorService.class,ManagedService.class },
+    property = {
+        "service.description=Video Editor Service"
+    }
+)
 public class VideoEditorServiceImpl extends AbstractJobProducer implements VideoEditorService, ManagedService {
 
   public static final String JOB_LOAD_KEY = "job.load.videoeditor";
@@ -205,7 +216,8 @@ public class VideoEditorServiceImpl extends AbstractJobProducer implements Video
     // create working directory
     File tempDirectory = new File(new File(workspace.rootDirectory()), "editor");
     tempDirectory = new File(tempDirectory, Long.toString(job.getId()));
-    String filename = String.format("%s-%s%s", sourceTrackFlavor, FilenameUtils.removeExtension(sourceFile.getName()), outputFileExtension);
+    String filename = String.format("%s-%s%s", sourceTrackFlavor,
+        FilenameUtils.removeExtension(sourceFile.getName()), outputFileExtension);
     File outputPath = new File(tempDirectory, filename);
 
     if (!outputPath.getParentFile().exists()) {
@@ -297,9 +309,9 @@ public class VideoEditorServiceImpl extends AbstractJobProducer implements Video
 
       // inspect new Track
       try {
-          inspectionJob = inspect(job,newTrackURI);
+        inspectionJob = inspect(job,newTrackURI);
       } catch (MediaInspectionException e) {
-          throw new ProcessFailedException("Media inspection of " + newTrackURI + " failed", e);
+        throw new ProcessFailedException("Media inspection of " + newTrackURI + " failed", e);
       }
       Track editedTrack = (Track) MediaPackageElementParser.getFromXml(inspectionJob.getPayload());
       logger.info("Finished editing track {}", editedTrack);
@@ -325,7 +337,7 @@ public class VideoEditorServiceImpl extends AbstractJobProducer implements Video
   protected Job inspect(Job job, URI workspaceURI) throws MediaInspectionException, ProcessFailedException {
     Job inspectionJob;
     try {
-        inspectionJob = inspectionService.inspect(workspaceURI);
+      inspectionJob = inspectionService.inspect(workspaceURI);
     } catch (MediaInspectionException e) {
       incident().recordJobCreationIncident(job, e);
       throw new MediaInspectionException("Media inspection of " + workspaceURI + " failed", e);
@@ -356,8 +368,9 @@ public class VideoEditorServiceImpl extends AbstractJobProducer implements Video
     while (!ll.isEmpty()) { // Check that 2 consecutive segments from same src are at least 2 secs apart
       if (ll.peek() != null) {
         nextclip = ll.pop();  // check next consecutive segment
-        if ((nextclip.getSrc() == clip.getSrc()) && (nextclip.getStart() - clip.getEnd()) < 2) { // collapse two segments into one
-          clip.setEnd(nextclip.getEnd());                             // by using inpt of seg 1 and outpoint of seg 2
+        // collapse two segments into one
+        if ((nextclip.getSrc() == clip.getSrc()) && (nextclip.getStart() - clip.getEnd()) < 2) {
+          clip.setEnd(nextclip.getEnd());   // by using inpt of seg 1 and outpoint of seg 2
         } else {
           clips.add(clip);   // keep last segment
           clip = nextclip;   // check next segment
@@ -436,12 +449,14 @@ public class VideoEditorServiceImpl extends AbstractJobProducer implements Video
   }
 
   @Override
+  @Activate
   public void activate(ComponentContext context) {
     logger.debug("activating...");
     super.activate(context);
     FFmpegEdit.init(context.getBundleContext());
   }
 
+  @Deactivate
   protected void deactivate(ComponentContext context) {
     logger.debug("deactivating...");
   }
@@ -464,30 +479,37 @@ public class VideoEditorServiceImpl extends AbstractJobProducer implements Video
     jobload = LoadUtil.getConfiguredLoadValue(properties, JOB_LOAD_KEY, DEFAULT_JOB_LOAD, serviceRegistry);
   }
 
+  @Reference
   public void setMediaInspectionService(MediaInspectionService inspectionService) {
     this.inspectionService = inspectionService;
   }
 
+  @Reference
   public void setServiceRegistry(ServiceRegistry serviceRegistry) {
     this.serviceRegistry = serviceRegistry;
   }
 
+  @Reference
   public void setWorkspace(Workspace workspace) {
     this.workspace = workspace;
   }
 
+  @Reference
   public void setSecurityService(SecurityService securityService) {
     this.securityService = securityService;
   }
 
+  @Reference
   public void setUserDirectoryService(UserDirectoryService userDirectoryService) {
     this.userDirectoryService = userDirectoryService;
   }
 
+  @Reference
   public void setOrganizationDirectoryService(OrganizationDirectoryService organizationDirectoryService) {
     this.organizationDirectoryService = organizationDirectoryService;
   }
 
+  @Reference
   public void setSmilService(SmilService smilService) {
     this.smilService = smilService;
   }

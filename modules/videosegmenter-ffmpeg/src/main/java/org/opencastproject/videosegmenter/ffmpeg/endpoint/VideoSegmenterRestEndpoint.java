@@ -37,6 +37,8 @@ import org.opencastproject.videosegmenter.api.VideoSegmenterException;
 import org.opencastproject.videosegmenter.api.VideoSegmenterService;
 
 import org.apache.commons.lang3.StringUtils;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,13 +55,30 @@ import javax.ws.rs.core.Response;
  * The REST endpoint for the {@link VideoSegmenterService} service
  */
 @Path("")
-@RestService(name = "videosegmentation", title = "Video Segmentation Service", abstractText = "This service performs segmentation of media files.", notes = {
+@RestService(
+    name = "videosegmentation",
+    title = "Video Segmentation Service",
+    abstractText = "This service performs segmentation of media files.",
+    notes = {
         "All paths above are relative to the REST endpoint base (something like http://your.server/files)",
-        "If the service is down or not working it will return a status 503, this means the the underlying service is "
-                + "not working and is either restarting or has failed",
-        "A status code 500 means a general failure has occurred which is not recoverable and was not anticipated. In "
-                + "other words, there is a bug! You should file an error report with your server logs from the time when the "
-                + "error occurred: <a href=\"https://github.com/opencast/opencast/issues\">Opencast Issue Tracker</a>" })
+        "If the service is down or not working it will return a status 503, this means the the "
+            + "underlying service is not working and is either restarting or has failed",
+        "A status code 500 means a general failure has occurred which is not recoverable and was "
+            + "not anticipated. In other words, there is a bug! You should file an error report "
+            + "with your server logs from the time when the error occurred: "
+            + "<a href=\"https://github.com/opencast/opencast/issues\">Opencast Issue Tracker</a>"
+    }
+)
+@Component(
+    immediate = true,
+    service = VideoSegmenterRestEndpoint.class,
+    property = {
+        "service.description=Video Segmentation REST Endpoint",
+        "opencast.service.type=org.opencastproject.videosegmenter",
+        "opencast.service.path=/analysis/videosegmenter",
+        "opencast.service.jobproducer=true"
+    }
+)
 public class VideoSegmenterRestEndpoint extends AbstractJobProducerEndpoint {
 
   /** The logger */
@@ -80,6 +99,7 @@ public class VideoSegmenterRestEndpoint extends AbstractJobProducerEndpoint {
    * @param serviceRegistry
    *          the service registry
    */
+  @Reference
   protected void setServiceRegistry(ServiceRegistry serviceRegistry) {
     this.serviceRegistry = serviceRegistry;
   }
@@ -90,6 +110,7 @@ public class VideoSegmenterRestEndpoint extends AbstractJobProducerEndpoint {
    * @param videoSegmenter
    *          the segmenter
    */
+  @Reference
   protected void setVideoSegmenter(VideoSegmenterService videoSegmenter) {
     this.service = videoSegmenter;
   }
@@ -105,19 +126,44 @@ public class VideoSegmenterRestEndpoint extends AbstractJobProducerEndpoint {
   @POST
   @Path("")
   @Produces(MediaType.TEXT_XML)
-  @RestQuery(name = "segment", description = "Submit a track for segmentation.", restParameters = { @RestParameter(description = "The track to segment.", isRequired = true, name = "track", type = RestParameter.Type.FILE) }, responses = {
-          @RestResponse(description = "The job ID to use when polling for the resulting mpeg7 catalog.", responseCode = HttpServletResponse.SC_OK),
-          @RestResponse(description = "The \"segment\" is NULL or not a valid track type.", responseCode = HttpServletResponse.SC_BAD_REQUEST),
-          @RestResponse(description = "The underlying service could not segment the video.", responseCode = HttpServletResponse.SC_INTERNAL_SERVER_ERROR) }, returnDescription = "The job ID to use when polling for the resulting mpeg7 catalog.")
+  @RestQuery(
+      name = "segment",
+      description = "Submit a track for segmentation.",
+      restParameters = {
+          @RestParameter(
+              description = "The track to segment.",
+              isRequired = true,
+              name = "track",
+              type = RestParameter.Type.FILE
+          )
+      },
+      responses = {
+          @RestResponse(
+              description = "The job ID to use when polling for the resulting mpeg7 catalog.",
+              responseCode = HttpServletResponse.SC_OK
+          ),
+          @RestResponse(
+              description = "The \"segment\" is NULL or not a valid track type.",
+              responseCode = HttpServletResponse.SC_BAD_REQUEST
+          ),
+          @RestResponse(
+              description = "The underlying service could not segment the video.",
+              responseCode = HttpServletResponse.SC_INTERNAL_SERVER_ERROR
+          )
+      },
+      returnDescription = "The job ID to use when polling for the resulting mpeg7 catalog."
+  )
   public Response segment(@FormParam("track") String trackAsXml) throws Exception {
     // Ensure that the POST parameters are present
-    if (StringUtils.isBlank(trackAsXml))
+    if (StringUtils.isBlank(trackAsXml)) {
       return Response.status(Response.Status.BAD_REQUEST).entity("track must not be null").build();
+    }
 
     // Deserialize the track
     MediaPackageElement sourceTrack = MediaPackageElementParser.getFromXml(trackAsXml);
-    if (!Track.TYPE.equals(sourceTrack.getElementType()))
+    if (!Track.TYPE.equals(sourceTrack.getElementType())) {
       return Response.status(Response.Status.BAD_REQUEST).entity("mediapackage element must be of type track").build();
+    }
 
     try {
       // Asynchronously segment the specified track
@@ -136,24 +182,15 @@ public class VideoSegmenterRestEndpoint extends AbstractJobProducerEndpoint {
     return docs;
   }
 
-  /**
-   * {@inheritDoc}
-   *
-   * @see org.opencastproject.rest.AbstractJobProducerEndpoint#getService()
-   */
   @Override
   public JobProducer getService() {
-    if (service instanceof JobProducer)
+    if (service instanceof JobProducer) {
       return (JobProducer) service;
-    else
+    } else {
       return null;
+    }
   }
 
-  /**
-   * {@inheritDoc}
-   *
-   * @see org.opencastproject.rest.AbstractJobProducerEndpoint#getServiceRegistry()
-   */
   @Override
   public ServiceRegistry getServiceRegistry() {
     return serviceRegistry;

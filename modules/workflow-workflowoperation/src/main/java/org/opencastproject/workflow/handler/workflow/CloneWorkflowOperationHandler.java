@@ -27,12 +27,15 @@ import org.opencastproject.mediapackage.MediaPackageElement;
 import org.opencastproject.mediapackage.MediaPackageElementFlavor;
 import org.opencastproject.mediapackage.selector.AbstractMediaPackageElementSelector;
 import org.opencastproject.mediapackage.selector.SimpleElementSelector;
+import org.opencastproject.serviceregistry.api.ServiceRegistry;
 import org.opencastproject.util.Checksum;
 import org.opencastproject.util.ChecksumType;
 import org.opencastproject.util.NotFoundException;
 import org.opencastproject.workflow.api.AbstractWorkflowOperationHandler;
+import org.opencastproject.workflow.api.ConfiguredTagsAndFlavors;
 import org.opencastproject.workflow.api.WorkflowInstance;
 import org.opencastproject.workflow.api.WorkflowOperationException;
+import org.opencastproject.workflow.api.WorkflowOperationHandler;
 import org.opencastproject.workflow.api.WorkflowOperationInstance;
 import org.opencastproject.workflow.api.WorkflowOperationResult;
 import org.opencastproject.workflow.api.WorkflowOperationResult.Action;
@@ -40,6 +43,8 @@ import org.opencastproject.workspace.api.Workspace;
 
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,11 +52,20 @@ import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 
 /**
  * Workflow operation handler for cloning tracks from a flavor
  */
+@Component(
+    immediate = true,
+    service = WorkflowOperationHandler.class,
+    property = {
+        "service.description=Clone Workflow Operation Handler",
+        "workflow.operation=clone"
+    }
+)
 public class CloneWorkflowOperationHandler extends AbstractWorkflowOperationHandler {
 
   /** Configuration key for the \"source-flavor\" of the track to use as a source input */
@@ -75,6 +89,7 @@ public class CloneWorkflowOperationHandler extends AbstractWorkflowOperationHand
    * @param workspace
    *          the workspace
    */
+  @Reference
   protected void setWorkspace(Workspace workspace) {
     this.workspace = workspace;
   }
@@ -91,21 +106,26 @@ public class CloneWorkflowOperationHandler extends AbstractWorkflowOperationHand
     WorkflowOperationInstance currentOperation = workflowInstance.getCurrentOperation();
 
     // Check which tags have been configured
-    String sourceTagsOption = StringUtils.trimToNull(currentOperation.getConfiguration(OPT_SOURCE_TAGS));
-    String sourceFlavorOption = StringUtils.trimToNull(currentOperation.getConfiguration(OPT_SOURCE_FLAVOR));
+    ConfiguredTagsAndFlavors tagsAndFlavors = getTagsAndFlavors(workflowInstance,
+        Configuration.many, Configuration.many, Configuration.none, Configuration.one);
+    List<String> sourceTagsOption = tagsAndFlavors.getSrcTags();
+    List<MediaPackageElementFlavor> sourceFlavorOptionList = tagsAndFlavors.getSrcFlavors();
     String targetFlavorOption = StringUtils.trimToNull(currentOperation.getConfiguration(OPT_TARGET_FLAVOR));
 
     AbstractMediaPackageElementSelector<MediaPackageElement> elementSelector = new SimpleElementSelector();
 
     // Make sure either one of tags or flavors are provided
-    if (StringUtils.isBlank(sourceTagsOption) && StringUtils.isBlank(sourceFlavorOption)) {
+    if (sourceTagsOption.isEmpty() && sourceFlavorOptionList.isEmpty()) {
       logger.info("No source tags or flavors have been specified, not matching anything. Operation will be skipped.");
       return createResult(mediaPackage, Action.SKIP);
     }
 
     // if no source-favor is specified, all flavors will be checked for given tags
-    if (sourceFlavorOption == null) {
-      sourceFlavorOption = "*/*";
+    MediaPackageElementFlavor sourceFlavorOption;
+    if (sourceFlavorOptionList.isEmpty()) {
+      sourceFlavorOption = new MediaPackageElementFlavor("*","*");
+    } else {
+      sourceFlavorOption = sourceFlavorOptionList.get(0);
     }
 
     StringBuilder sb = new StringBuilder();
@@ -116,11 +136,11 @@ public class CloneWorkflowOperationHandler extends AbstractWorkflowOperationHand
     logger.debug(sb.toString());
 
     // Select the source flavors
-    MediaPackageElementFlavor sourceFlavor = MediaPackageElementFlavor.parseFlavor(sourceFlavorOption);
+    MediaPackageElementFlavor sourceFlavor = sourceFlavorOption;
     elementSelector.addFlavor(sourceFlavor);
 
     // Select the source tags
-    for (String tag : asList(sourceTagsOption)) {
+    for (String tag : sourceTagsOption) {
       elementSelector.addTag(tag);
     }
 
@@ -182,6 +202,12 @@ public class CloneWorkflowOperationHandler extends AbstractWorkflowOperationHand
     }
 
     return newElement;
+  }
+
+  @Reference
+  @Override
+  public void setServiceRegistry(ServiceRegistry serviceRegistry) {
+    super.setServiceRegistry(serviceRegistry);
   }
 
 }

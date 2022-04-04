@@ -44,10 +44,16 @@ import org.opencastproject.util.doc.rest.RestQuery;
 import org.opencastproject.util.doc.rest.RestResponse;
 import org.opencastproject.util.doc.rest.RestService;
 
+import org.osgi.service.component.ComponentContext;
+import org.osgi.service.component.annotations.Activate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.List;
 import java.util.Set;
 
 import javax.servlet.http.HttpServletResponse;
+import javax.ws.rs.DELETE;
 import javax.ws.rs.DefaultValue;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
@@ -63,9 +69,18 @@ import javax.ws.rs.core.Response;
   abstractText = "The system bundle info endpoint yields information about the running OSGi bundles of Opencast.")
 public abstract class BundleInfoRestEndpoint {
 
+  private static final Logger logger = LoggerFactory.getLogger(BundleInfoRestEndpoint.class);
+
   private static final String DEFAULT_BUNDLE_PREFIX = "opencast";
 
   protected abstract BundleInfoDb getDb();
+
+  private long lastModified = 0;
+
+  @Activate
+  public void activate(ComponentContext cc) {
+    lastModified = cc.getBundleContext().getBundle().getLastModified();
+  }
 
   @GET
   // path prefix "bundles" is contained here and not in the path annotation of the class
@@ -149,7 +164,9 @@ public abstract class BundleInfoRestEndpoint {
             throw new Error("bug");
           case 1:
             // all versions align
-            return ok(obj(p("consistent", true)).append(fullVersionJson.apply(example.getVersion())));
+            return ok(obj(p("consistent", true))
+                .append(fullVersionJson.apply(example.getVersion()))
+                .append(obj(p("last-modified", lastModified))));
           default:
             // multiple versions found
             return ok(obj(p("consistent", false),
@@ -159,6 +176,30 @@ public abstract class BundleInfoRestEndpoint {
         }
       }
     });
+  }
+
+  @DELETE
+  @Path("bundles/host")
+  @RestQuery(
+          name = "clearHost",
+          description = "Removes the tracked bundles for a host. This is done automatically when you shut down "
+          + "Opencast. But this endpoint can be used to force this in case e.g. a machine got dropped. Make sure the "
+          + "host is actually gone! The database will be automatically rebuilt when Opencast on that host is "
+          + "(re)started.",
+          restParameters = {
+                  @RestParameter(
+                          name = "host",
+                          description = "The name of the host to clear",
+                          isRequired = true,
+                          type = RestParameter.Type.STRING,
+                          defaultValue = "") },
+          responses = {
+                  @RestResponse(description = "Version structure", responseCode = HttpServletResponse.SC_NO_CONTENT) },
+          returnDescription = "No data is returned.")
+  public Response clearHost(@QueryParam("host") String host) {
+    logger.debug("Removing tracked bundles of host: {}", host);
+    getDb().clear(host);
+    return Response.noContent().build();
   }
 
   public static final Function<BundleVersion, Jsons.Obj> fullVersionJson = new Function<BundleVersion, Jsons.Obj>() {

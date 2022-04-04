@@ -29,13 +29,16 @@ import org.opencastproject.mediapackage.MediaPackageElement;
 import org.opencastproject.mediapackage.MediaPackageElementFlavor;
 import org.opencastproject.mediapackage.selector.AbstractMediaPackageElementSelector;
 import org.opencastproject.mediapackage.selector.SimpleElementSelector;
+import org.opencastproject.serviceregistry.api.ServiceRegistry;
 import org.opencastproject.util.FileSupport;
 import org.opencastproject.util.NotFoundException;
 import org.opencastproject.util.UrlSupport;
 import org.opencastproject.util.data.Option;
 import org.opencastproject.workflow.api.AbstractWorkflowOperationHandler;
+import org.opencastproject.workflow.api.ConfiguredTagsAndFlavors;
 import org.opencastproject.workflow.api.WorkflowInstance;
 import org.opencastproject.workflow.api.WorkflowOperationException;
+import org.opencastproject.workflow.api.WorkflowOperationHandler;
 import org.opencastproject.workflow.api.WorkflowOperationInstance;
 import org.opencastproject.workflow.api.WorkflowOperationResult;
 import org.opencastproject.workflow.api.WorkflowOperationResult.Action;
@@ -43,18 +46,28 @@ import org.opencastproject.workspace.api.Workspace;
 
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.Collection;
+import java.util.List;
 
 /**
  * Workflow operation handler for copying video data through NFS
  */
+@Component(
+    immediate = true,
+    service = WorkflowOperationHandler.class,
+    property = {
+        "service.description=Copy Workflow Operation Handler",
+        "workflow.operation=copy"
+    }
+)
 public class CopyWorkflowOperationHandler extends AbstractWorkflowOperationHandler {
-
   /** Configuration key for the \"tag\" of the track to use as a source input */
   public static final String OPT_SOURCE_TAGS = "source-tags";
 
@@ -79,6 +92,7 @@ public class CopyWorkflowOperationHandler extends AbstractWorkflowOperationHandl
    * @param workspace
    *          the workspace
    */
+  @Reference
   protected void setWorkspace(Workspace workspace) {
     this.workspace = workspace;
   }
@@ -95,8 +109,10 @@ public class CopyWorkflowOperationHandler extends AbstractWorkflowOperationHandl
     WorkflowOperationInstance currentOperation = workflowInstance.getCurrentOperation();
 
     // Check which tags have been configured
-    String sourceTagsOption = StringUtils.trimToNull(currentOperation.getConfiguration(OPT_SOURCE_TAGS));
-    String sourceFlavorsOption = StringUtils.trimToNull(currentOperation.getConfiguration(OPT_SOURCE_FLAVORS));
+    ConfiguredTagsAndFlavors tagsAndFlavors = getTagsAndFlavors(workflowInstance,
+        Configuration.many, Configuration.many, Configuration.none, Configuration.none);
+    List<String> sourceTagsOption = tagsAndFlavors.getSrcTags();
+    List<MediaPackageElementFlavor> sourceFlavorsOption = tagsAndFlavors.getSrcFlavors();
     String targetDirectoryOption = StringUtils.trimToNull(currentOperation.getConfiguration(OPT_TARGET_DIRECTORY));
     Option<String> targetFilenameOption = Option.option(StringUtils.trimToNull(currentOperation
             .getConfiguration(OPT_TARGET_FILENAME)));
@@ -112,7 +128,7 @@ public class CopyWorkflowOperationHandler extends AbstractWorkflowOperationHandl
     AbstractMediaPackageElementSelector<MediaPackageElement> elementSelector = new SimpleElementSelector();
 
     // Make sure either one of tags or flavors are provided
-    if (StringUtils.isBlank(sourceTagsOption) && StringUtils.isBlank(sourceFlavorsOption)) {
+    if (sourceTagsOption.isEmpty() && sourceFlavorsOption.isEmpty()) {
       logger.info("No source tags or flavors have been specified, not matching anything");
       return createResult(mediaPackage, Action.CONTINUE);
     }
@@ -122,16 +138,16 @@ public class CopyWorkflowOperationHandler extends AbstractWorkflowOperationHandl
       throw new WorkflowOperationException("No target directory has been set for the copy operation!");
 
     // Select the source flavors
-    for (String flavor : asList(sourceFlavorsOption)) {
+    for (MediaPackageElementFlavor flavor : sourceFlavorsOption) {
       try {
-        elementSelector.addFlavor(MediaPackageElementFlavor.parseFlavor(flavor));
+        elementSelector.addFlavor(flavor);
       } catch (IllegalArgumentException e) {
         throw new WorkflowOperationException("Source flavor '" + flavor + "' is malformed");
       }
     }
 
     // Select the source tags
-    for (String tag : asList(sourceTagsOption)) {
+    for (String tag : sourceTagsOption) {
       elementSelector.addTag(tag);
     }
 
@@ -199,6 +215,12 @@ public class CopyWorkflowOperationHandler extends AbstractWorkflowOperationHandl
               targetFile.getPath(), e.getMessage()));
     }
     logger.debug("Element {} copied to target {}.", sourceFile.getPath(), targetFile.getPath());
+  }
+
+  @Reference
+  @Override
+  public void setServiceRegistry(ServiceRegistry serviceRegistry) {
+    super.setServiceRegistry(serviceRegistry);
   }
 
 }

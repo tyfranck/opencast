@@ -1,10 +1,13 @@
-Install from Source (Mac OS X)
+Install from Source (macOS)
 ====================================
 
-These instructions outline how to install an all in one Opencast system on the Mac OS X operating system.
+These instructions outline how to install an all in one Opencast system on the macOS operating system.
 Tested on OS X 10.14.1 Mojave.
 
-> *The installation on Mac OS X is not officially supported. Use this at your own risk.*
+<div class=warn>
+The installation on macOS is not officially supported.
+Use this at your own risk.
+</div>
 
 
 Preparation
@@ -47,8 +50,9 @@ Required:
     Xcode
     jdk 11
     ffmpeg >= 3.2.4
-    maven >= 3.1
+    maven >= 3.6
     python >= 2.6
+    Firefox or Chrome
 
 (If you are using [jEnv](http://www.jenv.be/) to set up your environment, make sure to [enable the maven plugin
 ](https://stackoverflow.com/a/37466252).)
@@ -56,6 +60,7 @@ Required:
 Required (not necessarily on the same machine):
 
     ActiveMQ >= 5.10 (older versions untested)
+    Elasticsearch 7.9.x
 
 Required for text extraction:
 
@@ -91,6 +96,11 @@ Homebrew is a package manager for OS X. For installation instruction see [their 
     brew install sox
     brew install synfig
 
+#### Elasticsearch on macOS
+
+If you want to install Elasticsearch in the same machine run Elasticsearch as a Docker container
+
+    docker run -d --name elasticsearch -p 9200:9200 -p 9300:9300 -e 'discovery.type=single-node' elasticsearch:7.9.3
 #### Using pre-built binaries
 
 Pre-built versions of most dependencies can be downloaded from the respective project website:
@@ -109,7 +119,7 @@ building opencast (depending on the folder permissions, you might need to start 
 
     mvn clean install -Pdev
 
-> *Please be patient, as building Opencast for the first time will take quite long.*
+Please be patient, as building Opencast for the first time will take quite long.
 
 Configure
 ---------
@@ -139,5 +149,5 @@ the start-opencast script:
     cd build/opencast-dist-allinone-[…]
     ./bin/start-opencast
 
-As soon as Opencast is completely started, browse to [http://localhost:8080](http://localhost:8080) to get to the
+As soon as Opencast is completely started, browse to [localhost:8080](http://localhost:8080) to get to the
 administration interface.

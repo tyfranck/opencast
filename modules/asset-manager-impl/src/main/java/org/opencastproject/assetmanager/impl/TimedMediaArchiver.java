@@ -23,8 +23,12 @@ package org.opencastproject.assetmanager.impl;
 
 import static org.opencastproject.util.data.Option.some;
 
+import org.opencastproject.assetmanager.api.AssetManager;
 import org.opencastproject.kernel.scanner.AbstractScanner;
 import org.opencastproject.security.api.Organization;
+import org.opencastproject.security.api.OrganizationDirectoryService;
+import org.opencastproject.security.api.SecurityService;
+import org.opencastproject.serviceregistry.api.ServiceRegistry;
 import org.opencastproject.util.Log;
 import org.opencastproject.util.NeedleEye;
 import org.opencastproject.util.NotFoundException;
@@ -34,6 +38,11 @@ import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.osgi.service.cm.ConfigurationException;
 import org.osgi.service.cm.ManagedService;
+import org.osgi.service.component.ComponentContext;
+import org.osgi.service.component.annotations.Activate;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Deactivate;
+import org.osgi.service.component.annotations.Reference;
 import org.quartz.CronExpression;
 import org.quartz.JobDetail;
 import org.quartz.JobExecutionContext;
@@ -45,6 +54,13 @@ import java.util.Date;
 import java.util.Dictionary;
 import java.util.concurrent.TimeUnit;
 
+@Component(
+    immediate = true,
+    service = ManagedService.class,
+    property = {
+        "service.description=Timed media archiver Service"
+    }
+)
 public class TimedMediaArchiver extends AbstractScanner implements ManagedService {
   private static final Log logger = new Log(LoggerFactory.getLogger(TimedMediaArchiver.class));
 
@@ -56,7 +72,7 @@ public class TimedMediaArchiver extends AbstractScanner implements ManagedServic
   public static final String TRIGGER_GROUP = "oc-asset-manager-timed-media-archiver-trigger-group";
   public static final String TRIGGER_NAME = "oc-asset-manager-timed-media-archiver-trigger";
 
-  private TieredStorageAssetManager assetManager;
+  private AssetManager assetManager;
   private WorkflowService workflowService;
   private String storeId;
   private long ageModifier;
@@ -76,6 +92,18 @@ public class TimedMediaArchiver extends AbstractScanner implements ManagedServic
     }
   }
 
+  @Activate
+  @Override
+  public void activate(ComponentContext cc) {
+    super.activate(cc);
+  }
+
+  @Deactivate
+  @Override
+  public void deactivate() {
+    super.deactivate();
+  }
+
   public void updated(Dictionary<String, ?> properties) throws ConfigurationException {
     String cronExpression;
     boolean enabled;
@@ -93,8 +121,9 @@ public class TimedMediaArchiver extends AbstractScanner implements ManagedServic
       }
 
       cronExpression = (String) properties.get(PARAM_KEY_CRON_EXPR);
-      if (StringUtils.isBlank(cronExpression) || !CronExpression.isValidExpression(cronExpression))
+      if (StringUtils.isBlank(cronExpression) || !CronExpression.isValidExpression(cronExpression)) {
         throw new ConfigurationException(PARAM_KEY_CRON_EXPR, "Cron expression must be valid");
+      }
       setCronExpression(cronExpression);
       logger.debug("Timed media offload cron expression: '" + cronExpression + "'");
 
@@ -148,8 +177,8 @@ public class TimedMediaArchiver extends AbstractScanner implements ManagedServic
     try {
       // Hardcoded date of zero.  Assumption: there is nothing with a date older than 0 which needs to be auto moved.
       assetManager.moveSnapshotsByDate(new Date(0), maxAge, storeId);
-    } catch (NotFoundException e) {
-      throw new RuntimeException("Unable to offload asset manager data", e);
+    } catch (NotFoundException ignore) {
+      logger.debug("No snapshots found that need to be moved");
     }
   }
 
@@ -158,7 +187,8 @@ public class TimedMediaArchiver extends AbstractScanner implements ManagedServic
     return SCANNER_NAME;
   }
 
-  public void setAssetManager(TieredStorageAssetManager am) {
+  @Reference
+  public void setAssetManager(AssetManager am) {
     this.assetManager = am;
   }
 
@@ -183,4 +213,23 @@ public class TimedMediaArchiver extends AbstractScanner implements ManagedServic
       logger.debug("Finished " + parameters.getScannerName() + " job.");
     }
   }
+
+  @Reference
+  @Override
+  public void bindOrganizationDirectoryService(OrganizationDirectoryService organizationDirectoryService) {
+    super.bindOrganizationDirectoryService(organizationDirectoryService);
+  }
+
+  @Reference
+  @Override
+  public void bindSecurityService(SecurityService securityService) {
+    super.bindSecurityService(securityService);
+  }
+
+  @Reference
+  @Override
+  public void bindServiceRegistry(ServiceRegistry serviceRegistry) {
+    super.bindServiceRegistry(serviceRegistry);
+  }
+
 }

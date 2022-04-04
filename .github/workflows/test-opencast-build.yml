@@ -1,99 +1,30 @@
 name: Test Opencast
 
 on:
-  - push
-  - pull_request
+  pull_request:
+    paths:
+      - 'pom.xml'
+      - 'modules/**'
+      - 'docs/checkstyle/**'
+      - 'docs/log4j/**'
+      - 'assemblies/**'
+      - '.github/**'
+  push:
+    paths:
+      - 'pom.xml'
+      - 'modules/**'
+      - 'docs/checkstyle/**'
+      - 'docs/log4j/**'
+      - 'assemblies/**'
+      - '.github/**'
 
 jobs:
-
-  # Check documentation with markdownlint and build it using mkdocs
-  documentation:
-    runs-on: ubuntu-20.04
-
-    steps:
-    - uses: actions/checkout@v2
-
-    - name: set up python
-      uses: actions/setup-python@v2
-      with:
-        python-version: 3.9
-
-    - name: install dependencies
-      run: |
-        pip install -q mkdocs markdown_inline_graphviz_extension mkdocs-windmill
-        cd docs/guides
-        npm ci
-
-    - name: check documentation
-      run: bash ./.style-and-markdown-build.sh
-
-
-  # Test database upgrade path.
-  # For this, we initialize a 2.2 database and upgrade all the way to the latest version
-  database:
-    strategy:
-      matrix:
-        db:
-          - 'mysql:8'
-          - 'mariadb:10'
-    runs-on: ubuntu-20.04
-    container: ubuntu
-    services:
-      mydb:
-        image: ${{ matrix.db }}
-        env:
-          MYSQL_ROOT_PASSWORD: password
-        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=5
-    steps:
-    - uses: actions/checkout@v2
-
-    - name: initialize database
-      run: |
-        apt update -q
-        apt install -q -y mysql-client curl bc
-        mysql --host mydb -uroot -ppassword -e 'select version()'
-
-    - name: check upgrade path
-      run: |
-        sed -i 's_remote=""_remote="--host mydb -ppassword"_' docs/upgrade/.test.sh
-        ./docs/upgrade/.test.sh
-
-
-  # Run admin interface browser tests
-  frontend:
-    strategy:
-      matrix:
-        browser:
-          - chrome
-          - firefox
-    runs-on: ubuntu-20.04
-    steps:
-    - uses: actions/checkout@v2
-
-    - name: use node.js
-      uses: actions/setup-node@v1
-      with:
-        node-version: 14.x
-
-    - name: install dependencies
-      run: |
-        cd modules/admin-ui-frontend
-        npm ci
-        ./node_modules/.bin/bower install
-
-    - name: run front-end tests
-      run: |
-        cd modules/admin-ui-frontend
-        npm run test-${{ matrix.browser }}
-
-
-  # Build Opencast
   build:
     strategy:
       matrix:
         java:
-          - 8
           - 11
+          - 13
     name: build (java ${{ matrix.java }})
     runs-on: ubuntu-20.04
     steps:
@@ -122,6 +53,7 @@ jobs:
             hunspell \
             hunspell-de-de \
             procps \
+            s3cmd \
             sox \
             tar \
             tesseract-ocr \
@@ -134,5 +66,93 @@ jobs:
 
       - name: build opencast
         run: |
-          mvn --batch-mode -Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn \
-            clean install -Pnone
+          mvn clean install -Pnone \
+            --batch-mode \
+            -Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn \
+            -Dhttp.keepAlive=false \
+            -Dmaven.wagon.http.pool=false \
+            -Dmaven.wagon.httpconnectionManager.ttlSeconds=120
+
+      - name: build assemblies
+        if: matrix.java == 11
+        working-directory: assemblies
+        run: |
+          mvn clean install -Pallinone  \
+            --batch-mode \
+            -Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn \
+            -Dhttp.keepAlive=false \
+            -Dmaven.wagon.http.pool=false \
+            -Dmaven.wagon.httpconnectionManager.ttlSeconds=120
+
+      - name: prepare allinone distribution
+        if: matrix.java == 11
+        working-directory: build
+        run: |
+          tar xf opencast-dist-allinone*.tar.gz
+
+      - name: prepare runtime dependencies
+        if: matrix.java == 11
+        working-directory: docs/scripts/devel-dependency-containers
+        run: |
+          docker-compose up -d
+
+      - name: get new curl
+        if: matrix.java == 11
+        run: |
+          curl -OL https://github.com/moparisthebest/static-curl/releases/download/v7.77.0/curl-amd64
+          chmod +x curl-amd64
+
+      - name: wait for elasticsearch to boot
+        if: matrix.java == 11
+        run: >
+          ./curl-amd64 -fisS --retry 60 --retry-delay 1 --retry-all-errors
+          http://localhost:9200/
+
+      - name: integration test
+        if: matrix.java == 11
+        run: |
+          ./build/opencast-dist-allinone/bin/start-opencast daemon &
+          ./curl-amd64 -fisS --retry 30 --retry-delay 10 --retry-all-errors -u admin:opencast http://localhost:8080/sysinfo/bundles/version
+
+      - name: show logs on failure
+        if: ${{ failure() }}
+        run: cat build/opencast-dist-allinone/data/log/opencast.log || true
+
+      - name: save version
+        working-directory: build
+        if: >
+          github.event_name == 'push'
+          && matrix.java == 11
+          && github.repository == 'opencast/opencast'
+          && (github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/heads/r/'))
+        run: |
+          git log -n1 > "$(echo "${GITHUB_REF#refs/heads/}" | sed 's#/#_#').commit"
+
+      - name: configure s3cmd
+        if: >
+          github.event_name == 'push'
+          && matrix.java == 11
+          && github.repository == 'opencast/opencast'
+          && (github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/heads/r/'))
+        env:
+          S3_HOST: ${{ secrets.S3_HOST }}
+          S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
+          S3_SECRET_KEY: ${{ secrets.S3_SECRET_KEY }}
+        run: |
+          echo "host_base = ${S3_HOST}" > "$HOME/.s3cfg"
+          echo "host_bucket = ${S3_HOST}" >> "$HOME/.s3cfg"
+          echo "bucket_location = us-east-1" >> "$HOME/.s3cfg"
+          echo "use_https = True" >> "$HOME/.s3cfg"
+          echo "access_key = ${S3_ACCESS_KEY}" >> "$HOME/.s3cfg"
+          echo "secret_key = ${S3_SECRET_KEY}" >> "$HOME/.s3cfg"
+          echo "signature_v2 = False" >> "$HOME/.s3cfg"
+
+      - name: upload assets
+        working-directory: build
+        if: >
+          github.event_name == 'push'
+          && matrix.java == 11
+          && github.repository == 'opencast/opencast'
+          && (github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/heads/r/'))
+        run: |
+          s3cmd put -P *.commit opencast-dist-allinone*tar.gz s3://opencast-daily/

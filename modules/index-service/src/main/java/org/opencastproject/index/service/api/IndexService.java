@@ -21,17 +21,15 @@
 
 package org.opencastproject.index.service.api;
 
+import org.opencastproject.elasticsearch.api.SearchIndexException;
+import org.opencastproject.elasticsearch.index.ElasticsearchIndex;
+import org.opencastproject.elasticsearch.index.objects.event.Event;
+import org.opencastproject.elasticsearch.index.objects.series.Series;
 import org.opencastproject.event.comment.EventComment;
 import org.opencastproject.index.service.exception.IndexServiceException;
 import org.opencastproject.index.service.exception.UnsupportedAssetException;
-import org.opencastproject.index.service.impl.index.AbstractSearchIndex;
-import org.opencastproject.index.service.impl.index.event.Event;
-import org.opencastproject.index.service.impl.index.event.EventHttpServletRequest;
-import org.opencastproject.index.service.impl.index.group.Group;
-import org.opencastproject.index.service.impl.index.series.Series;
+import org.opencastproject.index.service.impl.util.EventHttpServletRequest;
 import org.opencastproject.ingest.api.IngestException;
-import org.opencastproject.matterhorn.search.SearchIndexException;
-import org.opencastproject.matterhorn.search.SearchResult;
 import org.opencastproject.mediapackage.MediaPackage;
 import org.opencastproject.mediapackage.MediaPackageElementFlavor;
 import org.opencastproject.mediapackage.MediaPackageException;
@@ -42,7 +40,6 @@ import org.opencastproject.scheduler.api.SchedulerException;
 import org.opencastproject.security.api.AccessControlList;
 import org.opencastproject.security.api.UnauthorizedException;
 import org.opencastproject.series.api.SeriesException;
-import org.opencastproject.userdirectory.ConflictException;
 import org.opencastproject.util.NotFoundException;
 import org.opencastproject.workflow.api.WorkflowDatabaseException;
 
@@ -68,76 +65,6 @@ public interface IndexService {
     SUCCESS, GENERAL_FAILURE, NOT_FOUND, RETRACTING
   }
 
-  SearchResult<Group> getGroups(String filter, Opt<Integer> limit, Opt<Integer> offset, Opt<String> sort,
-          AbstractSearchIndex index) throws SearchIndexException, IllegalArgumentException;
-
-  /**
-   * Get a single group
-   *
-   * @param id
-   *          the group id
-   * @param index
-   *          the index to search
-   * @return a group or none if not found wrapped in an option
-   * @throws SearchIndexException
-   *           Thrown if the index cannot be read
-   */
-  Opt<Group> getGroup(String id, AbstractSearchIndex index) throws SearchIndexException;
-
-  /**
-   * Remove a group by id
-   *
-   * @param groupId
-   *          the id of the group to remove
-   * @throws NotFoundException
-   *           the group was not found
-   * @throws UnauthorizedException
-   *           user is not authorized to remove this group
-   * @throws Exception
-   *           unexpected error occurred
-   *
-   */
-  void removeGroup(String groupId) throws NotFoundException, UnauthorizedException, Exception;
-
-  /**
-   * Update a {@link Group} with new data
-   *
-   * @param groupId
-   *          The unique id for the group.
-   * @param name
-   *          The name to use for the group.
-   * @param description
-   *          The description of the group.
-   * @param roles
-   *          A comma separated list of roles to add to this group.
-   * @param members
-   *          A comma separated list of roles to add to this group.
-   * @throws NotFoundException
-   *           Thrown if the group was not found
-   * @throws UnauthorizedException
-   *           Thrown if the user does not have rights to update the group
-   */
-  void updateGroup(String groupId, String name, String description, String roles, String members)
-          throws NotFoundException, UnauthorizedException;
-
-  /**
-   * Create a new {@link Group}
-   *
-   * @param name
-   *          The name of the group, also transformed to be the id for this group.
-   * @param description
-   *          The description of the group.
-   * @param roles
-   *          A comma separated list of roles to add to this group.
-   * @param members
-   *          A comma separated list of members to add to this group.
-   * @throws UnauthorizedException
-   *           if user does not have rights to create group
-   * @throws ConflictException
-   *           if group already exists
-   */
-   void createGroup(String name, String description, String roles, String members)
-          throws IllegalArgumentException, UnauthorizedException, ConflictException;
   /**
    * Get a single event
    *
@@ -149,7 +76,7 @@ public interface IndexService {
    * @throws SearchIndexException
    *           Thrown if the index cannot be read
    */
-  Opt<Event> getEvent(String id, AbstractSearchIndex index) throws SearchIndexException;
+  Opt<Event> getEvent(String id, ElasticsearchIndex index) throws SearchIndexException;
 
   /**
    * Creates a new event based on a request.
@@ -273,7 +200,7 @@ public interface IndexService {
    * @throws UnauthorizedException
    *           Thrown if the current user is unable to edit the event.
    */
-  MetadataList updateEventMetadata(String id, MetadataList metadataList, AbstractSearchIndex index)
+  MetadataList updateEventMetadata(String id, MetadataList metadataList, ElasticsearchIndex index)
           throws IndexServiceException, SearchIndexException, NotFoundException, UnauthorizedException;
 
   /**
@@ -297,7 +224,7 @@ public interface IndexService {
    * @throws UnauthorizedException
    *           Thrown if the current user is unable to update the event.
    */
-  MetadataList updateAllEventMetadata(String id, String metadataJSON, AbstractSearchIndex index)
+  MetadataList updateAllEventMetadata(String id, String metadataJSON, ElasticsearchIndex index)
           throws IllegalArgumentException, IndexServiceException, SearchIndexException, NotFoundException,
           UnauthorizedException;
 
@@ -340,7 +267,7 @@ public interface IndexService {
    * @throws UnauthorizedException
    *           Thrown if the action is unauthorized.
    */
-  AccessControlList updateEventAcl(String id, AccessControlList acl, AbstractSearchIndex index)
+  AccessControlList updateEventAcl(String id, AccessControlList acl, ElasticsearchIndex index)
           throws IllegalArgumentException, IndexServiceException, SearchIndexException, NotFoundException,
           UnauthorizedException;
 
@@ -362,6 +289,12 @@ public interface IndexService {
   List<EventCatalogUIAdapter> getEventCatalogUIAdapters();
 
   /**
+   * @return A {@link List} of extended {@link EventCatalogUIAdapter} that provide the metadata to the front end.
+   * Does not contain the common {@link EventCatalogUIAdapter}.
+   */
+  List<EventCatalogUIAdapter> getExtendedEventCatalogUIAdapters();
+
+  /**
    * @return the common {@link EventCatalogUIAdapter}
    */
   EventCatalogUIAdapter getCommonEventCatalogUIAdapter();
@@ -377,7 +310,7 @@ public interface IndexService {
    * @throws SearchIndexException
    *           Thrown if there is an error when using the search index.
    */
-  Opt<Series> getSeries(String seriesId, AbstractSearchIndex searchIndex) throws SearchIndexException;
+  Opt<Series> getSeries(String seriesId, ElasticsearchIndex searchIndex) throws SearchIndexException;
 
   /**
    * Create a new series.
@@ -455,7 +388,7 @@ public interface IndexService {
    * @throws UnauthorizedException
    *           Thrown if the current user is unable to update the event.
    */
-  MetadataList updateAllSeriesMetadata(String id, String metadataJSON, AbstractSearchIndex index)
+  MetadataList updateAllSeriesMetadata(String id, String metadataJSON, ElasticsearchIndex index)
           throws IllegalArgumentException, IndexServiceException, NotFoundException, UnauthorizedException;
 
   /**
@@ -475,7 +408,7 @@ public interface IndexService {
    * @throws UnauthorizedException
    *           Thrown if the user is unable to update the series.
    */
-  MetadataList updateAllSeriesMetadata(String id, MetadataList metadataList, AbstractSearchIndex index)
+  MetadataList updateAllSeriesMetadata(String id, MetadataList metadataList, ElasticsearchIndex index)
           throws IndexServiceException, NotFoundException, UnauthorizedException;
 
   /**

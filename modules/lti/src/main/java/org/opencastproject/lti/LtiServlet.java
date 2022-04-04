@@ -23,6 +23,7 @@ package org.opencastproject.lti;
 
 import org.apache.commons.lang3.StringUtils;
 import org.json.simple.JSONObject;
+import org.osgi.service.component.annotations.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,6 +38,7 @@ import java.util.Map;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
+import javax.servlet.Servlet;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
@@ -48,6 +50,16 @@ import javax.ws.rs.core.UriBuilder;
  * A servlet to accept an LTI login via POST. The actual authentication happens in LtiProcessingFilter. GET requests
  * produce JSON containing the LTI parameters passed during LTI launch.
  */
+@Component(
+    immediate = true,
+    service = Servlet.class,
+    property = {
+        "service.description=LTI Servlet",
+        "alias=/lti",
+        "httpContext.id=opencast.httpcontext",
+        "httpContext.shared=true"
+    }
+)
 public class LtiServlet extends HttpServlet {
 
   private static final String LTI_CUSTOM_PREFIX = "custom_";
@@ -206,11 +218,15 @@ public class LtiServlet extends HttpServlet {
     try {
       String customTool = URLDecoder
               .decode(StringUtils.trimToEmpty(req.getParameter(LTI_CUSTOM_TOOL)), StandardCharsets.UTF_8.displayName());
-      customTool = customTool.replaceAll("/?ltitools/(?<tool>[^/]*)/index.html\\??", "/ltitools/index.html?subtool=${tool}&");
+      customTool = customTool.replaceAll(
+          "/?ltitools/(?<tool>[^/]*)/index.html\\??",
+          "/ltitools/index.html?subtool=${tool}&"
+      );
       URI toolUri = new URI(customTool);
 
-      if (toolUri.getPath().isEmpty())
+      if (toolUri.getPath().isEmpty()) {
         throw new URISyntaxException(toolUri.toString(), "Provided 'custom_tool' has an empty path");
+      }
 
       // Make sure that the URI path starts with '/'. Otherwise, UriBuilder handles URIs incorrectly
       if (!toolUri.isOpaque() && !toolUri.getPath().startsWith("/")) {

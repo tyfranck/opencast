@@ -28,11 +28,13 @@ import org.opencastproject.job.api.JobContext;
 import org.opencastproject.security.api.SecurityService;
 import org.opencastproject.security.api.User;
 import org.opencastproject.security.api.UserDirectoryService;
+import org.opencastproject.serviceregistry.api.ServiceRegistry;
 import org.opencastproject.util.NotFoundException;
 import org.opencastproject.util.data.Option;
 import org.opencastproject.workflow.api.AbstractWorkflowOperationHandler;
 import org.opencastproject.workflow.api.WorkflowInstance;
 import org.opencastproject.workflow.api.WorkflowOperationException;
+import org.opencastproject.workflow.api.WorkflowOperationHandler;
 import org.opencastproject.workflow.api.WorkflowOperationInstance;
 import org.opencastproject.workflow.api.WorkflowOperationResult;
 import org.opencastproject.workflow.api.WorkflowOperationResult.Action;
@@ -40,6 +42,8 @@ import org.opencastproject.workflow.api.WorkflowOperationResult.Action;
 import com.entwinemedia.fn.data.Opt;
 
 import org.apache.commons.lang3.StringUtils;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,8 +51,17 @@ import java.util.Date;
 import java.util.List;
 
 /**
- * A workflow operation handler for creating, resolving and deleting comments automatically during the workflow process.
+ * A workflow operation handler for creating, resolving and deleting comments
+ * automatically during the workflow process.
  */
+@Component(
+    immediate = true,
+    service = WorkflowOperationHandler.class,
+    property = {
+        "service.description=Comment Workflow Operation Handler",
+        "workflow.operation=comment"
+    }
+)
 public class CommentWorkflowOperationHandler extends AbstractWorkflowOperationHandler {
   protected static final String ACTION = "action";
   protected static final String DESCRIPTION = "description";
@@ -116,8 +129,9 @@ public class CommentWorkflowOperationHandler extends AbstractWorkflowOperationHa
         break;
       default:
         logger.warn(
-                "Unknown action '{}' for comment with description '{}' and reason '{}'. It should be one of the following: ",
-                inputAction, description, reason, StringUtils.join(Operation.values(), ","));
+            "Unknown action '{}' for comment with description '{}' and reason '{}'. It should be "
+                + "one of the following: ",
+            inputAction, description, reason, StringUtils.join(Operation.values(), ","));
     }
     WorkflowOperationResult result = createResult(workflowInstance.getMediaPackage(), Action.CONTINUE,
             (new Date().getTime()) - date.getTime());
@@ -142,8 +156,10 @@ public class CommentWorkflowOperationHandler extends AbstractWorkflowOperationHa
             description);
     if (optComment.isNone()) {
       final User user = userDirectoryService.loadUser(workflowInstance.getCreatorName());
-      EventComment comment = EventComment.create(Option.none(), workflowInstance.getMediaPackage().getIdentifier().toString(),
-              securityService.getOrganization().getId(), description, user, reason, false);
+      EventComment comment = EventComment.create(
+          Option.none(),
+          workflowInstance.getMediaPackage().getIdentifier().toString(),
+          securityService.getOrganization().getId(), description, user, reason, false);
       eventCommentService.updateComment(comment);
     } else {
       logger.debug("Not creating comment with '{}' text and '{}' reason as it already exists for this event.",
@@ -168,10 +184,12 @@ public class CommentWorkflowOperationHandler extends AbstractWorkflowOperationHa
     Opt<EventComment> optComment = findComment(workflowInstance.getMediaPackage().getIdentifier().toString(), reason,
             description);
     if (optComment.isSome()) {
-      EventComment comment = EventComment.create(optComment.get().getId(), workflowInstance.getMediaPackage().getIdentifier().toString(),
-              securityService.getOrganization().getId(), optComment.get().getText(),
-              optComment.get().getAuthor(), optComment.get().getReason(), true, optComment.get().getCreationDate(),
-              optComment.get().getModificationDate(), optComment.get().getReplies());
+      EventComment comment = EventComment.create(
+          optComment.get().getId(),
+          workflowInstance.getMediaPackage().getIdentifier().toString(),
+          securityService.getOrganization().getId(), optComment.get().getText(),
+          optComment.get().getAuthor(), optComment.get().getReason(), true, optComment.get().getCreationDate(),
+          optComment.get().getModificationDate(), optComment.get().getReplies());
       eventCommentService.updateComment(comment);
     } else {
       logger.debug("Not resolving comment with '{}' text and/or '{}' reason as it doesn't exist.", description, reason);
@@ -221,7 +239,8 @@ public class CommentWorkflowOperationHandler extends AbstractWorkflowOperationHa
    * @throws EventCommentException
    *           Thrown if there was a problem finding the comment.
    */
-  private Opt<EventComment> findComment(String eventId, String reason, String description) throws EventCommentException {
+  private Opt<EventComment> findComment(String eventId, String reason, String description)
+          throws EventCommentException {
     Opt<EventComment> comment = Opt.none();
     List<EventComment> eventComments = eventCommentService.getComments(eventId);
 
@@ -252,16 +271,26 @@ public class CommentWorkflowOperationHandler extends AbstractWorkflowOperationHa
    * @param eventCommentService
    *          the workflow service
    */
+  @Reference
   public void setEventCommentService(EventCommentService eventCommentService) {
     this.eventCommentService = eventCommentService;
   }
 
   /** OSGi DI */
+  @Reference
   void setSecurityService(SecurityService service) {
     this.securityService = service;
   }
 
+  @Reference
   public void setUserDirectoryService(UserDirectoryService userDirectoryService) {
     this.userDirectoryService = userDirectoryService;
   }
+
+  @Reference
+  @Override
+  public void setServiceRegistry(ServiceRegistry serviceRegistry) {
+    super.setServiceRegistry(serviceRegistry);
+  }
+
 }

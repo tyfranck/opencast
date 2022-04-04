@@ -26,19 +26,19 @@ import static org.opencastproject.workflow.api.WorkflowInstance.WorkflowState.SU
 
 import org.opencastproject.assetmanager.api.AssetManager;
 import org.opencastproject.assetmanager.util.Workflows;
+import org.opencastproject.elasticsearch.api.SearchIndexException;
+import org.opencastproject.elasticsearch.api.SearchResult;
+import org.opencastproject.elasticsearch.api.SearchResultItem;
+import org.opencastproject.elasticsearch.index.ElasticsearchIndex;
+import org.opencastproject.elasticsearch.index.objects.event.Event;
+import org.opencastproject.elasticsearch.index.objects.event.EventSearchQuery;
 import org.opencastproject.index.service.api.IndexService;
 import org.opencastproject.index.service.exception.IndexServiceException;
-import org.opencastproject.index.service.impl.index.AbstractSearchIndex;
-import org.opencastproject.index.service.impl.index.event.Event;
-import org.opencastproject.index.service.impl.index.event.EventSearchQuery;
-import org.opencastproject.index.service.impl.index.event.EventUtils;
+import org.opencastproject.index.service.impl.util.EventUtils;
 import org.opencastproject.ingest.api.IngestService;
 import org.opencastproject.lti.service.api.LtiFileUpload;
 import org.opencastproject.lti.service.api.LtiJob;
 import org.opencastproject.lti.service.api.LtiService;
-import org.opencastproject.matterhorn.search.SearchIndexException;
-import org.opencastproject.matterhorn.search.SearchResult;
-import org.opencastproject.matterhorn.search.SearchResultItem;
 import org.opencastproject.mediapackage.MediaPackage;
 import org.opencastproject.mediapackage.MediaPackageElement;
 import org.opencastproject.mediapackage.MediaPackageElementBuilder;
@@ -81,6 +81,10 @@ import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
 import org.osgi.service.cm.ManagedService;
 import org.osgi.service.component.ComponentContext;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
+import org.osgi.service.component.annotations.ReferenceCardinality;
+import org.osgi.service.component.annotations.ReferencePolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -103,6 +107,13 @@ import java.util.stream.Collectors;
 /**
  * The LTI service implementation
  */
+@Component(
+    immediate = true,
+    service = { LtiService.class,ManagedService.class },
+    property = {
+        "service.description=LTI Service"
+    }
+)
 public class LtiServiceImpl implements LtiService, ManagedService {
   private static final Logger logger = LoggerFactory.getLogger(LtiServiceImpl.class);
 
@@ -114,7 +125,7 @@ public class LtiServiceImpl implements LtiService, ManagedService {
   private WorkflowService workflowService;
   private AssetManager assetManager;
   private Workspace workspace;
-  private AbstractSearchIndex searchIndex;
+  private ElasticsearchIndex searchIndex;
   private AuthorizationService authorizationService;
   private SeriesService seriesService;
   private String workflow;
@@ -124,51 +135,65 @@ public class LtiServiceImpl implements LtiService, ManagedService {
   private final List<EventCatalogUIAdapter> catalogUIAdapters = new ArrayList<>();
 
   /** OSGi DI */
+  @Reference
   public void setAuthorizationService(AuthorizationService authorizationService) {
     this.authorizationService = authorizationService;
   }
 
   /** OSGI DI */
+  @Reference
   public void setSeriesService(SeriesService seriesService) {
     this.seriesService = seriesService;
   }
 
   /** OSGi DI */
+  @Reference
   public void setAssetManager(AssetManager assetManager) {
     this.assetManager = assetManager;
   }
 
   /** OSGi DI */
+  @Reference
   public void setWorkflowService(WorkflowService workflowService) {
     this.workflowService = workflowService;
   }
 
   /** OSGi DI */
+  @Reference
   public void setWorkspace(Workspace workspace) {
     this.workspace = workspace;
   }
 
   /** OSGi DI */
-  public void setSearchIndex(AbstractSearchIndex searchIndex) {
+  @Reference
+  public void setSearchIndex(ElasticsearchIndex searchIndex) {
     this.searchIndex = searchIndex;
   }
 
   /** OSGi DI */
+  @Reference
   public void setIndexService(IndexService indexService) {
     this.indexService = indexService;
   }
 
   /** OSGi DI */
+  @Reference
   public void setIngestService(IngestService ingestService) {
     this.ingestService = ingestService;
   }
 
   /** OSGi DI */
+  @Reference
   void setSecurityService(SecurityService securityService) {
     this.securityService = securityService;
   }
 
   /** OSGi DI. */
+  @Reference(
+      cardinality = ReferenceCardinality.MULTIPLE,
+      policy = ReferencePolicy.DYNAMIC,
+      unbind = "removeCatalogUIAdapter"
+  )
   public void addCatalogUIAdapter(EventCatalogUIAdapter catalogUIAdapter) {
     catalogUIAdapters.add(catalogUIAdapter);
   }
@@ -235,6 +260,8 @@ public class LtiServiceImpl implements LtiService, ManagedService {
   public void upsertEvent(
           final LtiFileUpload file,
           final String captions,
+          final String captionFormat,
+          final String captionLanguage,
           final String eventId,
           final String seriesId,
           final String metadataJson) throws UnauthorizedException, NotFoundException {
@@ -246,37 +273,46 @@ public class LtiServiceImpl implements LtiService, ManagedService {
       throw new RuntimeException("No workflow configured, cannot upload");
     }
     try {
-      MediaPackage mp = ingestService.createMediaPackage();
-      if (mp == null) {
+      MediaPackage mediaPackage = ingestService.createMediaPackage();
+      if (mediaPackage == null) {
         throw new RuntimeException("Unable to create media package for event");
       }
+
       if (captions != null) {
-        final MediaPackageElementFlavor captionsFlavor = new MediaPackageElementFlavor("vtt+en", "captions");
-        final MediaPackageElementBuilder elementBuilder = MediaPackageElementBuilderFactory.newInstance().newElementBuilder();
-        final MediaPackageElement captionsMpe = elementBuilder
+        final MediaPackageElementFlavor captionsFlavor = new MediaPackageElementFlavor(
+            "captions", captionFormat + "+" + captionLanguage
+        );
+        final MediaPackageElementBuilder elementBuilder =
+            MediaPackageElementBuilderFactory.newInstance().newElementBuilder();
+        final MediaPackageElement captionsMediaPackage = elementBuilder
                 .newElement(MediaPackageElement.Type.Attachment, captionsFlavor);
-        captionsMpe.setMimeType(mimeType("text", "vtt"));
-        captionsMpe.addTag("lang:en");
-        mp.add(captionsMpe);
+        if ("dfxp".equals(captionFormat)) {
+          captionsMediaPackage.setMimeType(mimeType("application", "xml"));
+        } else {
+          captionsMediaPackage.setMimeType(mimeType("text", captionFormat));
+        }
+        captionsMediaPackage.addTag("lang:" + captionLanguage);
+        mediaPackage.add(captionsMediaPackage);
         final URI captionsUri = workspace
                 .put(
-                        mp.getIdentifier().toString(),
-                        captionsMpe.getIdentifier(),
-                        "captions.vtt",
+                        mediaPackage.getIdentifier().toString(),
+                        captionsMediaPackage.getIdentifier(),
+                        "captions." + captionFormat,
                         new ByteArrayInputStream(captions.getBytes(StandardCharsets.UTF_8)));
-        captionsMpe.setURI(captionsUri);
+        captionsMediaPackage.setURI(captionsUri);
       }
 
-      JSONArray metadataJsonArray = (JSONArray) new JSONParser().parse(metadataJson);
-
       final EventCatalogUIAdapter adapter = getEventCatalogUIAdapter();
+
       final DublinCoreMetadataCollection collection = adapter.getRawFields();
+
+      JSONArray metadataJsonArray = (JSONArray) new JSONParser().parse(metadataJson);
 
       JSONArray collectionJsonArray = MetadataJson.extractSingleCollectionfromListJson(metadataJsonArray);
       MetadataJson.fillCollectionFromJson(collection, collectionJsonArray);
 
       replaceField(collection, "isPartOf", seriesId);
-      adapter.storeFields(mp, collection);
+      adapter.storeFields(mediaPackage, collection);
 
       AccessControlList accessControlList = null;
 
@@ -289,16 +325,20 @@ public class LtiServiceImpl implements LtiService, ManagedService {
         accessControlList = new AccessControlList(
           new AccessControlEntry("ROLE_ADMIN", "write", true),
           new AccessControlEntry("ROLE_ADMIN", "read", true),
-          new AccessControlEntry("ROLE_OAUTH_USER", "write", true),
-          new AccessControlEntry("ROLE_OAUTH_USER", "read", true));
+          new AccessControlEntry("ROLE_USER", "read", true));
       }
 
-      this.authorizationService.setAcl(mp, AclScope.Episode, accessControlList);
-      mp = ingestService.addTrack(file.getStream(), file.getSourceName(), MediaPackageElements.PRESENTER_SOURCE, mp);
+      this.authorizationService.setAcl(mediaPackage, AclScope.Episode, accessControlList);
+      mediaPackage = ingestService.addTrack(
+            file.getStream(),
+            file.getSourceName(),
+            MediaPackageElements.PRESENTER_SOURCE,
+            mediaPackage
+      );
 
       final Map<String, String> configuration = gson.fromJson(workflowConfiguration, Map.class);
       configuration.put("workflowDefinitionId", workflow);
-      ingestService.ingest(mp, workflow, configuration);
+      ingestService.ingest(mediaPackage, workflow, configuration);
     } catch (Exception e) {
       throw new RuntimeException("unable to create event", e);
     }
@@ -319,7 +359,8 @@ public class LtiServiceImpl implements LtiService, ManagedService {
     try {
       final WorkflowDefinition wfd = workflowService.getWorkflowDefinitionById(workflowId);
       final Workflows workflows = new Workflows(assetManager, workflowService);
-      final ConfiguredWorkflow workflow = workflow(wfd, createCopyWorkflowConfig(seriesId, UUID.randomUUID().toString()));
+      final ConfiguredWorkflow workflow
+          = workflow(wfd, createCopyWorkflowConfig(seriesId, UUID.randomUUID().toString()));
       final List<WorkflowInstance> workflowInstances = workflows
               .applyWorkflowToLatestVersion(Collections.singleton(eventId), workflow).toList();
       if (workflowInstances.isEmpty()) {
@@ -333,11 +374,10 @@ public class LtiServiceImpl implements LtiService, ManagedService {
 
   private EventCatalogUIAdapter getEventCatalogUIAdapter() {
     final MediaPackageElementFlavor flavor = new MediaPackageElementFlavor("dublincore", "episode");
-    final EventCatalogUIAdapter adapter = catalogUIAdapters.stream().filter(e -> e.getFlavor().equals(flavor)).findAny()
-            .orElse(null);
-    if (adapter == null) {
-      throw new RuntimeException("no adapter found");
-    }
+    final EventCatalogUIAdapter adapter = catalogUIAdapters.stream()
+        .filter(e -> e.getFlavor().equals(flavor))
+        .findAny()
+        .orElseThrow(() -> new RuntimeException("no adapter found"));
     return adapter;
   }
 
@@ -380,8 +420,9 @@ public class LtiServiceImpl implements LtiService, ManagedService {
       throw new RuntimeException(e);
     }
 
-    if (optEvent.isNone())
+    if (optEvent.isNone()) {
       throw new NotFoundException("cannot find event with id '" + eventId + "'");
+    }
 
     final Event event = optEvent.get();
 
@@ -412,8 +453,9 @@ public class LtiServiceImpl implements LtiService, ManagedService {
     metadataList.add(this.indexService.getCommonEventCatalogUIAdapter(), metadataCollection);
 
     final String wfState = event.getWorkflowState();
-    if (wfState != null && WorkflowUtil.isActive(WorkflowInstance.WorkflowState.valueOf(wfState)))
+    if (wfState != null && WorkflowUtil.isActive(WorkflowInstance.WorkflowState.valueOf(wfState))) {
       metadataList.setLocked(MetadataList.Locked.WORKFLOW_RUNNING);
+    }
     return new SimpleSerializer().toJson(MetadataJson.listToJson(metadataList, true));
   }
 
@@ -423,24 +465,33 @@ public class LtiServiceImpl implements LtiService, ManagedService {
     final DublinCoreMetadataCollection collection = metadataList
             .getMetadataByAdapter(this.indexService.getCommonEventCatalogUIAdapter());
     if (collection != null) {
-      if (collection.getOutputFields().containsKey(DublinCore.PROPERTY_CREATED.getLocalName()))
+      if (collection.getOutputFields().containsKey(DublinCore.PROPERTY_CREATED.getLocalName())) {
         collection.removeField(collection.getOutputFields().get(DublinCore.PROPERTY_CREATED.getLocalName()));
-      if (collection.getOutputFields().containsKey("duration"))
+      }
+      if (collection.getOutputFields().containsKey("duration")) {
         collection.removeField(collection.getOutputFields().get("duration"));
-      if (collection.getOutputFields().containsKey(DublinCore.PROPERTY_IDENTIFIER.getLocalName()))
+      }
+      if (collection.getOutputFields().containsKey(DublinCore.PROPERTY_IDENTIFIER.getLocalName())) {
         collection.removeField(collection.getOutputFields().get(DublinCore.PROPERTY_IDENTIFIER.getLocalName()));
-      if (collection.getOutputFields().containsKey(DublinCore.PROPERTY_SOURCE.getLocalName()))
+      }
+      if (collection.getOutputFields().containsKey(DublinCore.PROPERTY_SOURCE.getLocalName())) {
         collection.removeField(collection.getOutputFields().get(DublinCore.PROPERTY_SOURCE.getLocalName()));
-      if (collection.getOutputFields().containsKey("startDate"))
+      }
+      if (collection.getOutputFields().containsKey("startDate")) {
         collection.removeField(collection.getOutputFields().get("startDate"));
-      if (collection.getOutputFields().containsKey("startTime"))
+      }
+      if (collection.getOutputFields().containsKey("startTime")) {
         collection.removeField(collection.getOutputFields().get("startTime"));
-      if (collection.getOutputFields().containsKey("location"))
+      }
+      if (collection.getOutputFields().containsKey("location")) {
         collection.removeField(collection.getOutputFields().get("location"));
+      }
 
       if (collection.getOutputFields().containsKey(DublinCore.PROPERTY_PUBLISHER.getLocalName())) {
-        final MetadataField publisher = collection.getOutputFields().get(DublinCore.PROPERTY_PUBLISHER.getLocalName());
-        final Map<String, String> users = publisher.getCollection() == null ? new HashMap<>() : publisher.getCollection();
+        final MetadataField publisher
+            = collection.getOutputFields().get(DublinCore.PROPERTY_PUBLISHER.getLocalName());
+        final Map<String, String> users
+            = publisher.getCollection() == null ? new HashMap<>() : publisher.getCollection();
         final String loggedInUser = this.securityService.getUser().getName();
         if (!users.containsKey(loggedInUser)) {
           users.put(loggedInUser, loggedInUser);

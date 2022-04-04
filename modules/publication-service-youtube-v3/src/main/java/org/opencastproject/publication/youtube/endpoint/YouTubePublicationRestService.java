@@ -41,6 +41,8 @@ import org.opencastproject.util.doc.rest.RestQuery;
 import org.opencastproject.util.doc.rest.RestResponse;
 import org.opencastproject.util.doc.rest.RestService;
 
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -63,9 +65,22 @@ import javax.ws.rs.core.Response.Status;
         "All paths above are relative to the REST endpoint base (something like http://your.server/files)",
         "If the service is down or not working it will return a status 503, this means the the underlying service is "
             + "not working and is either restarting or has failed",
-        "A status code 500 means a general failure has occurred which is not recoverable and was not anticipated. In "
-            + "other words, there is a bug! You should file an error report with your server logs from the time when the "
-            + "error occurred: <a href=\"https://github.com/opencast/opencast/issues\">Opencast Issue Tracker</a>" })
+        "A status code 500 means a general failure has occurred which is not recoverable and was "
+            + "not anticipated. In other words, there is a bug! You should file an error report "
+            + "with your server logs from the time when the error occurred: "
+            + "<a href=\"https://github.com/opencast/opencast/issues\">Opencast Issue Tracker</a>"
+    }
+)
+@Component(
+    immediate = true,
+    service = YouTubePublicationRestService.class,
+    property = {
+        "service.description=Youtube Publication REST Endpoint",
+        "opencast.service.type=org.opencastproject.publication.youtube",
+        "opencast.service.path=/youtube",
+        "opencast.service.jobproducer=true"
+    }
+)
 public class YouTubePublicationRestService extends AbstractJobProducerEndpoint {
 
   private final Logger logger = LoggerFactory.getLogger(YouTubePublicationRestService.class);
@@ -81,12 +96,28 @@ public class YouTubePublicationRestService extends AbstractJobProducerEndpoint {
       description = "Publish a media package element to youtube publication channel",
       returnDescription = "The job that can be used to track the publication",
       restParameters = {
-          @RestParameter(name = "mediapackage", isRequired = true, description = "The mediapackage", type = Type.TEXT),
-          @RestParameter(name = "elementId", isRequired = true, description = "The element to publish", type = Type.STRING) },
+          @RestParameter(
+              name = "mediapackage",
+              isRequired = true,
+              description = "The mediapackage",
+              type = Type.TEXT
+          ),
+          @RestParameter(
+              name = "elementId",
+              isRequired = true,
+              description = "The element to publish",
+              type = Type.STRING
+          )
+      },
       responses = {
           @RestResponse(responseCode = SC_OK, description = "An XML representation of the publication job"),
-          @RestResponse(responseCode = SC_BAD_REQUEST, description = "elementId does not reference a track") })
-  public Response publish(@FormParam("mediapackage") final String mediaPackageXml, @FormParam("elementId") final String elementId) {
+          @RestResponse(responseCode = SC_BAD_REQUEST, description = "elementId does not reference a track")
+      }
+  )
+  public Response publish(
+      @FormParam("mediapackage") final String mediaPackageXml,
+      @FormParam("elementId") final String elementId
+  ) {
     final Job job;
     try {
       final MediaPackage mediapackage = MediaPackageParser.getFromXml(mediaPackageXml);
@@ -106,13 +137,17 @@ public class YouTubePublicationRestService extends AbstractJobProducerEndpoint {
   @POST
   @Path("/retract")
   @Produces(MediaType.TEXT_XML)
-  @RestQuery(name = "retract",
+  @RestQuery(
+      name = "retract",
       description = "Retract a media package from the youtube publication channel",
       returnDescription = "The job that can be used to track the retraction",
       restParameters = {
-          @RestParameter(name = "mediapackage", isRequired = true, description = "The mediapackage", type = Type.TEXT) },
+          @RestParameter(name = "mediapackage", isRequired = true, description = "The mediapackage", type = Type.TEXT)
+      },
       responses = {
-          @RestResponse(responseCode = SC_OK, description = "An XML representation of the retraction job") })
+          @RestResponse(responseCode = SC_OK, description = "An XML representation of the retraction job")
+      }
+  )
   public Response retract(@FormParam("mediapackage") final String mediaPackageXml) {
     final Job job;
     try {
@@ -141,6 +176,7 @@ public class YouTubePublicationRestService extends AbstractJobProducerEndpoint {
    * @param serviceRegistry
    *          the service registry
    */
+  @Reference
   protected void setServiceRegistry(final ServiceRegistry serviceRegistry) {
     this.serviceRegistry = serviceRegistry;
   }
@@ -161,6 +197,7 @@ public class YouTubePublicationRestService extends AbstractJobProducerEndpoint {
    * @param service
    *          the service to set
    */
+  @Reference
   protected void setService(final YouTubePublicationService service) {
     this.service = service;
   }

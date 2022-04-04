@@ -52,6 +52,9 @@ import org.apache.commons.lang3.StringUtils;
 import org.osgi.service.cm.ConfigurationException;
 import org.osgi.service.cm.ManagedService;
 import org.osgi.service.component.ComponentContext;
+import org.osgi.service.component.annotations.Activate;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -68,6 +71,13 @@ import java.util.Dictionary;
 import java.util.List;
 import java.util.UUID;
 
+@Component(
+    immediate = true,
+    service = { SoxService.class,ManagedService.class },
+    property = {
+        "service.description=Sox audio processing service"
+    }
+)
 public class SoxServiceImpl extends AbstractJobProducer implements SoxService, ManagedService {
 
   /** The logging instance */
@@ -133,6 +143,7 @@ public class SoxServiceImpl extends AbstractJobProducer implements SoxService, M
    *          the component context
    */
   @Override
+  @Activate
   public void activate(ComponentContext cc) {
     logger.info("Activating sox service");
     super.activate(cc);
@@ -216,10 +227,12 @@ public class SoxServiceImpl extends AbstractJobProducer implements SoxService, M
   }
 
   protected Option<Track> analyze(Job job, Track audioTrack) throws SoxException {
-    if (!audioTrack.hasAudio())
+    if (!audioTrack.hasAudio()) {
       throw new SoxException("No audio stream available");
-    if (audioTrack.hasVideo())
+    }
+    if (audioTrack.hasVideo()) {
       throw new SoxException("It must not have a video stream");
+    }
 
     try {
       // Get the tracks and make sure they exist
@@ -266,8 +279,9 @@ public class SoxServiceImpl extends AbstractJobProducer implements SoxService, M
     }
 
     AudioStreamImpl audioStream = (AudioStreamImpl) audio.get(0);
-    if (audio.size() > 1)
+    if (audio.size() > 1) {
       logger.info("Multiple audio streams found, take first audio stream {}", audioStream);
+    }
 
     for (String value : metadata) {
       if (value.startsWith("Pk lev dB")) {
@@ -300,8 +314,9 @@ public class SoxServiceImpl extends AbstractJobProducer implements SoxService, M
         logger.info(line);
         stats.add(line);
       }
-      if (process.exitValue() != 0)
+      if (process.exitValue() != 0) {
         throw new SoxException("Sox process failed with error code: " + process.exitValue());
+      }
       logger.info("Sox process finished");
       return stats;
     } catch (IOException e) {
@@ -314,14 +329,18 @@ public class SoxServiceImpl extends AbstractJobProducer implements SoxService, M
   }
 
   private Option<Track> normalize(Job job, TrackImpl audioTrack, Float targetRmsLevDb) throws SoxException {
-    if (!audioTrack.hasAudio())
+    if (!audioTrack.hasAudio()) {
       throw new SoxException("No audio stream available");
-    if (audioTrack.hasVideo())
+    }
+    if (audioTrack.hasVideo()) {
       throw new SoxException("It must not have a video stream");
-    if (audioTrack.getAudio().size() < 1)
+    }
+    if (audioTrack.getAudio().size() < 1) {
       throw new SoxException("No audio stream metadata available");
-    if (audioTrack.getAudio().get(0).getRmsLevDb() == null)
+    }
+    if (audioTrack.getAudio().get(0).getRmsLevDb() == null) {
       throw new SoxException("No RMS Lev dB metadata available");
+    }
 
     final String targetTrackId = IdImpl.fromUUID().toString();
 
@@ -353,15 +372,17 @@ public class SoxServiceImpl extends AbstractJobProducer implements SoxService, M
     command.add("remix");
     command.add("-");
     command.add("gain");
-    if (targetRmsLevDb > rmsLevDb)
+    if (targetRmsLevDb > rmsLevDb) {
       command.add("-l");
+    }
     command.add(new Float(targetRmsLevDb - rmsLevDb).toString());
     command.add("stats");
 
     List<String> normalizeResult = launchSoxProcess(command);
 
-    if (normalizedFile.length() == 0)
+    if (normalizedFile.length() == 0) {
       throw new SoxException("Normalization failed: Output file is empty!");
+    }
 
     // Put the file in the workspace
     URI returnURL = null;
@@ -398,6 +419,7 @@ public class SoxServiceImpl extends AbstractJobProducer implements SoxService, M
    * @param workspace
    *          an instance of the workspace
    */
+  @Reference
   protected void setWorkspace(Workspace workspace) {
     this.workspace = workspace;
   }
@@ -408,6 +430,7 @@ public class SoxServiceImpl extends AbstractJobProducer implements SoxService, M
    * @param serviceRegistry
    *          the service registry
    */
+  @Reference
   protected void setServiceRegistry(ServiceRegistry serviceRegistry) {
     this.serviceRegistry = serviceRegistry;
   }
@@ -428,6 +451,7 @@ public class SoxServiceImpl extends AbstractJobProducer implements SoxService, M
    * @param securityService
    *          the securityService to set
    */
+  @Reference
   public void setSecurityService(SecurityService securityService) {
     this.securityService = securityService;
   }
@@ -438,6 +462,7 @@ public class SoxServiceImpl extends AbstractJobProducer implements SoxService, M
    * @param userDirectoryService
    *          the userDirectoryService to set
    */
+  @Reference
   public void setUserDirectoryService(UserDirectoryService userDirectoryService) {
     this.userDirectoryService = userDirectoryService;
   }
@@ -448,6 +473,7 @@ public class SoxServiceImpl extends AbstractJobProducer implements SoxService, M
    * @param organizationDirectory
    *          the organization directory
    */
+  @Reference
   public void setOrganizationDirectoryService(OrganizationDirectoryService organizationDirectory) {
     this.organizationDirectoryService = organizationDirectory;
   }

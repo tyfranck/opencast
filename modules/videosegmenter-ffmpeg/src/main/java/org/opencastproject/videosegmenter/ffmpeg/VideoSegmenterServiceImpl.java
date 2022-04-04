@@ -53,6 +53,8 @@ import org.opencastproject.workspace.api.Workspace;
 import org.osgi.service.cm.ConfigurationException;
 import org.osgi.service.cm.ManagedService;
 import org.osgi.service.component.ComponentContext;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -80,8 +82,15 @@ import java.util.regex.Pattern;
  * ffmpeg -nostats -i in.mp4 -filter:v 'select=gt(scene\,0.04),showinfo' -f null - 2&gt;&amp;1 | grep Parsed_showinfo_1
  * </pre>
  */
+@Component(
+    immediate = true,
+    service = { VideoSegmenterService.class,ManagedService.class },
+    property = {
+        "service.description=VideoSegmenter Service"
+    }
+)
 public class VideoSegmenterServiceImpl extends AbstractJobProducer implements
-VideoSegmenterService, ManagedService {
+    VideoSegmenterService, ManagedService {
 
   /** Resulting collection in the working file repository */
   public static final String COLLECTION_ID = "videosegments";
@@ -156,7 +165,7 @@ VideoSegmenterService, ManagedService {
 
   /** The logging facility */
   protected static final Logger logger = LoggerFactory
-    .getLogger(VideoSegmenterServiceImpl.class);
+      .getLogger(VideoSegmenterServiceImpl.class);
 
   /** Number of pixels that may change between two frames without considering them different */
   protected float changesThreshold = DEFAULT_CHANGES_THRESHOLD;
@@ -309,7 +318,8 @@ VideoSegmenterService, ManagedService {
       }
     }
 
-    segmenterJobLoad = LoadUtil.getConfiguredLoadValue(properties, SEGMENTER_JOB_LOAD_KEY, DEFAULT_SEGMENTER_JOB_LOAD, serviceRegistry);
+    segmenterJobLoad = LoadUtil.getConfiguredLoadValue(
+        properties, SEGMENTER_JOB_LOAD_KEY, DEFAULT_SEGMENTER_JOB_LOAD, serviceRegistry);
   }
 
   /**
@@ -318,7 +328,7 @@ VideoSegmenterService, ManagedService {
    * @see org.opencastproject.videosegmenter.api.VideoSegmenterService#segment(org.opencastproject.mediapackage.Track)
    */
   public Job segment(Track track) throws VideoSegmenterException,
-         MediaPackageException {
+          MediaPackageException {
     try {
       return serviceRegistry.createJob(JOB_TYPE,
           Operation.Segment.toString(),
@@ -339,7 +349,7 @@ VideoSegmenterService, ManagedService {
    * @throws VideoSegmenterException
    */
   protected Catalog segment(Job job, Track track)
-    throws VideoSegmenterException, MediaPackageException {
+          throws VideoSegmenterException, MediaPackageException {
 
     // Make sure the element can be analyzed using this analysis
     // implementation
@@ -364,9 +374,10 @@ VideoSegmenterService, ManagedService {
             "Error reading the video file in the workspace", e);
       }
 
-      if (track.getDuration() == null)
+      if (track.getDuration() == null) {
         throw new MediaPackageException("Track " + track
             + " does not have a duration");
+      }
       logger.info("Track {} loaded, duration is {} s", mediaUrl,
           track.getDuration() / 1000);
 
@@ -512,11 +523,11 @@ VideoSegmenterService, ManagedService {
                 // if the error is bigger than one, double the changes threshold, because multiplying
                 // with a large error can yield a much too high changes threshold
                 } else {
-                changesThresholdLocal *= 2;
+                  changesThresholdLocal *= 2;
                 }
               }
             } else {
-                changesThresholdLocal /= 2;
+              changesThresholdLocal /= 2;
             }
 
             logger.debug("onesided optimization yields new changesThreshold = {}", changesThresholdLocal);
@@ -592,8 +603,8 @@ VideoSegmenterService, ManagedService {
 
 
       Catalog mpeg7Catalog = (Catalog) MediaPackageElementBuilderFactory
-        .newInstance().newElementBuilder()
-        .newElement(Catalog.TYPE, MediaPackageElements.SEGMENTS);
+          .newInstance().newElementBuilder()
+          .newElement(Catalog.TYPE, MediaPackageElements.SEGMENTS);
       URI uri;
       try {
         uri = workspace.putInCollection(COLLECTION_ID, job.getId()
@@ -631,8 +642,14 @@ VideoSegmenterService, ManagedService {
   private LinkedList<Segment> runSegmentationFFmpeg(Track track, Video videoContent, File mediaFile,
           float changesThreshold) throws IOException, VideoSegmenterException {
 
-    String[] command = new String[] { binary, "-nostats", "-nostdin", "-i", mediaFile.getAbsolutePath(),
-      "-filter:v", "select=gt(scene\\," + changesThreshold + "),showinfo", "-f", "null", "-"};
+    String[] command = new String[] {
+        binary,
+        "-nostats", "-nostdin",
+        "-i", mediaFile.getAbsolutePath(),
+        "-filter:v", "select=gt(scene\\," + changesThreshold + "),showinfo",
+        "-f", "null",
+        "-"
+    };
 
     logger.info("Detecting video segments using command: {}", (Object) command);
 
@@ -705,7 +722,7 @@ VideoSegmenterService, ManagedService {
       segments.add(s);
     }
 
-   logger.info("Segmentation of {} yields {} segments",
+    logger.info("Segmentation of {} yields {} segments",
            mediaFile.toURI().toURL(), segments.size());
 
     return segments;
@@ -726,7 +743,7 @@ VideoSegmenterService, ManagedService {
       switch (op) {
         case Segment:
           Track track = (Track) MediaPackageElementParser
-            .getFromXml(arguments.get(0));
+              .getFromXml(arguments.get(0));
           Catalog catalog = segment(job, track);
           return MediaPackageElementParser.getAsXml(catalog);
         default:
@@ -929,8 +946,8 @@ VideoSegmenterService, ManagedService {
     // add last segment separately to make sure the last segment ends exactly at the end of the track
     Segment s = videoContent.getTemporalDecomposition()
           .createSegment("segment-" + prefNumber);
-      s.setMediaTime(new MediaRelTimeImpl(currentSegStart, track.getDuration() - currentSegStart));
-      segmentsNew.add(s);
+    s.setMediaTime(new MediaRelTimeImpl(currentSegStart, track.getDuration() - currentSegStart));
+    segmentsNew.add(s);
 
     return mpeg7;
   }
@@ -941,6 +958,7 @@ VideoSegmenterService, ManagedService {
    * @param workspace
    *            an instance of the workspace
    */
+  @Reference
   protected void setWorkspace(Workspace workspace) {
     this.workspace = workspace;
   }
@@ -951,10 +969,11 @@ VideoSegmenterService, ManagedService {
    * @param mpeg7CatalogService
    *            an instance of the mpeg7 catalog service
    */
+  @Reference(name = "Mpeg7Service")
   protected void setMpeg7CatalogService(
       Mpeg7CatalogService mpeg7CatalogService) {
     this.mpeg7CatalogService = mpeg7CatalogService;
-      }
+  }
 
   /**
    * Sets the receipt service
@@ -962,6 +981,7 @@ VideoSegmenterService, ManagedService {
    * @param serviceRegistry
    *            the service registry
    */
+  @Reference
   protected void setServiceRegistry(ServiceRegistry serviceRegistry) {
     this.serviceRegistry = serviceRegistry;
   }
@@ -982,6 +1002,7 @@ VideoSegmenterService, ManagedService {
    * @param securityService
    *            the securityService to set
    */
+  @Reference
   public void setSecurityService(SecurityService securityService) {
     this.securityService = securityService;
   }
@@ -992,6 +1013,7 @@ VideoSegmenterService, ManagedService {
    * @param userDirectoryService
    *            the userDirectoryService to set
    */
+  @Reference
   public void setUserDirectoryService(
       UserDirectoryService userDirectoryService) {
     this.userDirectoryService = userDirectoryService;
@@ -1003,6 +1025,7 @@ VideoSegmenterService, ManagedService {
    * @param organizationDirectory
    *            the organization directory
    */
+  @Reference
   public void setOrganizationDirectoryService(
       OrganizationDirectoryService organizationDirectory) {
     this.organizationDirectoryService = organizationDirectory;
